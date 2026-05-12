@@ -1,0 +1,62 @@
+version: "3.9"
+
+services:
+  api-gateway:
+    build: ./services/api-gateway
+    container_name: api-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      REQUIREMENTS_AGENT_URL: http://requirements-agent:8001
+      MATCHING_AGENT_URL: http://matching-agent:8002
+      EVALUATION_AGENT_URL: http://evaluation-agent:8003
+    depends_on:
+      - requirements-agent
+      - matching-agent
+      - evaluation-agent
+
+  requirements-agent:
+    build: ./services/requirements-agent
+    container_name: requirements-agent
+    ports:
+      - "8001:8001"
+    environment:
+      LLM_API_BASE: ${LLM_API_BASE:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+
+  matching-agent:
+    build: ./services/matching-agent
+    container_name: matching-agent
+    ports:
+      - "8002:8002"
+    depends_on:
+      - knowledge-base
+    environment:
+      KNOWLEDGE_BASE_URL: http://knowledge-base:8004
+
+  evaluation-agent:
+    build: ./services/evaluation-agent
+    container_name: evaluation-agent
+    ports:
+      - "8003:8003"
+    environment:
+      LLM_API_BASE: ${LLM_API_BASE:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+
+  knowledge-base:
+    build: ./services/knowledge-base
+    container_name: knowledge-base
+    ports:
+      - "8004:8004"
+
+  frontend:
+    build: ./frontend
+    container_name: architecture-frontend
+    ports:
+      - "3000:80"
+    environment:
+      GATEWAY_URL: http://localhost:8000
+    depends_on:
+      - api-gateway

@@ -1,0 +1,183 @@
+{
+  "check_time": "2026-05-07T17:26:41",
+  "project_root": "D:\\桌面\\大作业\\软件体系\\architecture-assistant",
+  "summary": {
+    "total_checks": 21,
+    "passed": 21,
+    "failed": 0,
+    "warnings": 0,
+    "pass_rate": 1.0,
+    "estimated_score": 100.0,
+    "top_failures": []
+  },
+  "results": [
+    {
+      "id": "DIR-services",
+      "category": "1. 核心目录",
+      "name": "核心目录: services/",
+      "status": "通过",
+      "detail": "已定位到 'services/'",
+      "fix": ""
+    },
+    {
+      "id": "DIR-frontend",
+      "category": "1. 核心目录",
+      "name": "核心目录: frontend/",
+      "status": "通过",
+      "detail": "已定位到 'frontend/'",
+      "fix": ""
+    },
+    {
+      "id": "DIR-docs",
+      "category": "1. 核心目录",
+      "name": "核心目录: docs/",
+      "status": "通过",
+      "detail": "已定位到 'docs/'",
+      "fix": ""
+    },
+    {
+      "id": "DIR-tests",
+      "category": "1. 核心目录",
+      "name": "核心目录: tests/",
+      "status": "通过",
+      "detail": "已定位到 'tests/'",
+      "fix": ""
+    },
+    {
+      "id": "AGT-COUNT",
+      "category": "2. Agent 模块",
+      "name": "Agent 数量 >= 3: 当前 4 个",
+      "status": "通过",
+      "detail": "检测到 4 个候选 Agent 文件:\n  - services\\requirements_agent\\app\\main.py (agent)\n  - services\\matching_agent\\app\\main.py (agent)\n  - services\\evaluation_agent\\app\\main.py (agent)\n  - services\\api_gateway\\app\\main.py (AGENT)",
+      "fix": ""
+    },
+    {
+      "id": "KB-COUNT",
+      "category": "3. 知识库",
+      "name": "架构风格数量 >= 10: 当前 10 种",
+      "status": "通过",
+      "detail": "来源: services\\knowledge_base\\data\\architecture_styles.json\n风格列表: Layered Architecture, Microservices, Event-Driven Architecture, SOA, Hexagonal Architecture, Pipeline-Filter, CQRS, Serverless, Space-Based, Client-Server",
+      "fix": ""
+    },
+    {
+      "id": "KB-FIELDS",
+      "category": "3. 知识库",
+      "name": "每种风格包含必填字段 (name, pros, cons, best_for)",
+      "status": "通过",
+      "detail": "10 种风格字段完整",
+      "fix": ""
+    },
+    {
+      "id": "TEST-COUNT",
+      "category": "4. 测试数据集",
+      "name": "测试用例数量 >= 20: 当前 20 条",
+      "status": "通过",
+      "detail": "来源: tests\\datasets\\requirements_cases.json\n示例:\n  - 开发跨平台即时通讯系统，支持万人在线，消息实时可靠，后续扩展视频通话。\n  - 构建电商平台，订单支付库存需要强一致事务，双11高峰要抗压。\n  - 企业内部审批系统，流程复杂、规则多、需要稳定迭代。\n  - 日志分析平台，每秒采集百万条日志并实时告警。\n  - 银行核心账务系统，要求高可靠和强一致，审计可追溯。",
+      "fix": ""
+    },
+    {
+      "id": "LLM-CONFIG",
+      "category": "5. LLM 集成",
+      "name": "LLM API 配置: 发现 4 个密钥/地址",
+      "status": "通过",
+      "detail": "发现的配置:\n  - LLM_API_BASE (来源: .env.example)\n  - LLM_API_KEY (来源: .env.example)\n  - LLM_MODEL (来源: .env.example)\n  - ANTHROPIC_API_KEY (来源: 环境变量)",
+      "fix": ""
+    },
+    {
+      "id": "LLM-CODE",
+      "category": "5. LLM 集成",
+      "name": "LLM 调用代码: 发现 7 处匹配",
+      "status": "通过",
+      "detail": "  - scripts\\check_assignment.py: 匹配 'chat/completions'\n  - scripts\\generate_ppt.py: 匹配 'deepseek'\n  - tests\\generate_test_report.py: 匹配 'llm'\n  - tests\\run_regression.py: 匹配 'llm'\n  - tests\\unit\\test_evaluation.py: 匹配 'llm'\n  - services\\requirements_agent\\app\\main.py: 匹配 'chat/completions'\n  - services\\evaluation_agent\\app\\main.py: 匹配 'chat/completions'",
+      "fix": ""
+    },
+    {
+      "id": "API-FRAMEWORK",
+      "category": "6. Web API",
+      "name": "API 框架: 检测到 2 个框架",
+      "status": "通过",
+      "detail": "  - FastAPI/Uvicorn (scripts\\check_assignment.py)\n  - Flask (scripts\\check_assignment.py)",
+      "fix": ""
+    },
+    {
+      "id": "API-ROUTES",
+      "category": "6. Web API",
+      "name": "API 路由: 发现 11 个端点",
+      "status": "通过",
+      "detail": "  - services\\requirements_agent\\app\\main.py: GET /health\n  - services\\matching_agent\\app\\main.py: GET /health\n  - services\\knowledge_base\\app\\main.py: GET /health\n  - services\\knowledge_base\\app\\main.py: GET /styles\n  - services\\knowledge_base\\app\\main.py: POST /styles\n  - services\\knowledge_base\\app\\main.py: GET /feedback\n  - services\\knowledge_base\\app\\main.py: POST /feedback\n  - services\\knowledge_base\\app\\main.py: GET /feedback/stats\n  - services\\evaluation_agent\\app\\main.py: GET /health\n  - services\\evaluation_agent\\app\\main.py: POST /evaluate\n  - services\\api_gateway\\app\\main.py: GET /health",
+      "fix": ""
+    },
+    {
+      "id": "VIZ-PAGE",
+      "category": "7. 可视化",
+      "name": "前端页面文件: 发现 1 个",
+      "status": "通过",
+      "detail": "  - frontend\\index.html",
+      "fix": ""
+    },
+    {
+      "id": "VIZ-LIB",
+      "category": "7. 可视化",
+      "name": "图形库: 检测到 Mermaid.js",
+      "status": "通过",
+      "detail": "使用的图形库: Mermaid.js",
+      "fix": ""
+    },
+    {
+      "id": "VIZ-MATRIX",
+      "category": "7. 可视化",
+      "name": "对比矩阵界面: 已发现",
+      "status": "通过",
+      "detail": "代码中含对比矩阵相关关键词",
+      "fix": ""
+    },
+    {
+      "id": "VIZ-TOPO",
+      "category": "7. 可视化",
+      "name": "架构拓扑图渲染: 已发现",
+      "status": "通过",
+      "detail": "代码中含拓扑图相关关键词",
+      "fix": ""
+    },
+    {
+      "id": "DOC-需求规格",
+      "category": "8. 文档与答辩",
+      "name": "文档: 需求规格说明书",
+      "status": "通过",
+      "detail": "匹配文件: README.md, docs\\00-迭代完成记录与要求映射.md, docs\\01-需求规格说明书.md, docs\\02-架构设计文档.md, docs\\03-系统测试报告.md",
+      "fix": ""
+    },
+    {
+      "id": "DOC-架构设计",
+      "category": "8. 文档与答辩",
+      "name": "文档: 架构设计文档",
+      "status": "通过",
+      "detail": "匹配文件: docs\\00-迭代完成记录与要求映射.md, docs\\02-架构设计文档.md, docs\\05-严格对照检查报告.md, docs\\07-答辩讲稿与问答.md, docs\\最终自评报告.md",
+      "fix": ""
+    },
+    {
+      "id": "DOC-系统测试",
+      "category": "8. 文档与答辩",
+      "name": "文档: 系统测试报告",
+      "status": "通过",
+      "detail": "匹配文件: docs\\00-迭代完成记录与要求映射.md, docs\\03-系统测试报告.md, docs\\04-项目实施计划.md, docs\\05-严格对照检查报告.md, docs\\06-LLM联调与回归执行指南.md",
+      "fix": ""
+    },
+    {
+      "id": "DOC-答辩材料",
+      "category": "8. 文档与答辩",
+      "name": "文档: 答辩材料",
+      "status": "通过",
+      "detail": "匹配文件: docs\\00-迭代完成记录与要求映射.md, docs\\01-需求规格说明书.md, docs\\03-系统测试报告.md, docs\\04-项目实施计划.md, docs\\05-严格对照检查报告.md",
+      "fix": ""
+    },
+    {
+      "id": "DOC-COUNT",
+      "category": "8. 文档与答辩",
+      "name": "文档总数 (md/pdf/docx): 21 份",
+      "status": "通过",
+      "detail": "找到 21 份文档文件",
+      "fix": ""
+    }
+  ]
+}

@@ -1,0 +1,215 @@
+{
+  "extracted_features": {
+    "high_concurrency": true,
+    "real_time": true,
+    "reliability": true,
+    "scalability": true,
+    "complex_business": false,
+    "strict_consistency": false,
+    "deployment_constraint": false,
+    "data_intensive": false,
+    "team_size_large": false,
+    "security": false
+  },
+  "feature_hits": {
+    "high_concurrency": [
+      "万人"
+    ],
+    "real_time": [
+      "实时",
+      "实时性",
+      "即时",
+      "在线",
+      "消息"
+    ],
+    "reliability": [
+      "可靠",
+      "可靠性"
+    ],
+    "scalability": [
+      "扩展"
+    ],
+    "complex_business": [],
+    "strict_consistency": [],
+    "deployment_constraint": [],
+    "data_intensive": [],
+    "team_size_large": [],
+    "security": []
+  },
+  "candidates": [
+    {
+      "style": "Microservices",
+      "score": 4,
+      "reasons": [
+        "matches feature: scalability",
+        "matches feature: reliability"
+      ],
+      "pros": [
+        "high scalability",
+        "independent release"
+      ],
+      "cons": [
+        "distributed complexity",
+        "higher ops cost"
+      ],
+      "best_for": [
+        "large teams",
+        "independent deployment"
+      ],
+      "topology_mermaid": "graph LR\nA[Client] --> B[API Gateway]\nB --> C[User Service]\nB --> D[Order Service]\nB --> E[Payment Service]\nC --> F[(DB)]\nD --> G[(DB)]\nE --> H[(DB)]"
+    },
+    {
+      "style": "Event-Driven Architecture",
+      "score": 7,
+      "reasons": [
+        "matches feature: high_concurrency",
+        "matches feature: real_time",
+        "matches feature: scalability",
+        "extra rule: high concurrency favors event-driven"
+      ],
+      "pros": [
+        "high throughput",
+        "loose coupling"
+      ],
+      "cons": [
+        "hard tracing",
+        "eventual consistency complexity"
+      ],
+      "best_for": [
+        "real-time messaging",
+        "stream processing"
+      ],
+      "topology_mermaid": "graph LR\nA[Client] --> B[API Gateway]\nB --> C[Producer Service]\nC --> D[(Event Bus)]\nD --> E[Consumer A]\nD --> F[Consumer B]\nD --> G[Notification Service]"
+    },
+    {
+      "style": "CQRS",
+      "score": 4,
+      "reasons": [
+        "matches feature: high_concurrency",
+        "matches feature: scalability"
+      ],
+      "pros": [
+        "optimized read/write models",
+        "good scalability"
+      ],
+      "cons": [
+        "model sync complexity",
+        "increased system complexity"
+      ],
+      "best_for": [
+        "read/write imbalance",
+        "audit-heavy domains"
+      ],
+      "topology_mermaid": "graph LR\nA[Client] --> B[Command API]\nA --> C[Query API]\nB --> D[(Write DB)]\nC --> E[(Read DB)]\nD -.event sync.-> E\nF[Event Bus] -.-> D\nF -.-> E"
+    }
+  ],
+  "final_report": {
+    "recommended_style": "Event-Driven Architecture",
+    "alternative_styles": [
+      "Microservices",
+      "CQRS"
+    ],
+    "decision_basis": {
+      "rule_engine": [
+        "高并发场景处理能力强",
+        "实时性需求匹配度高",
+        "可扩展性强，便于后续扩展",
+        "extra rule: high concurrency favors event-driven"
+      ],
+      "rule_engine_raw": [
+        "matches feature: high_concurrency",
+        "matches feature: real_time",
+        "matches feature: scalability",
+        "extra rule: high concurrency favors event-driven"
+      ],
+      "llm_summary": "### 1. 推荐架构\n\n- **核心推荐**：Event-Driven Architecture（事件驱动架构）\n- **备选架构**：Microservices（微服务）、CQRS（命令查询职责分离）\n\n### 2. 推荐理由\n\n- **天然匹配实时高并发场景**：事件驱动架构支持异步、非阻塞处理，能够轻松应对万人同时在线的消息吞吐，并通过事件总线（如Kafka、RabbitMQ）实现流式处理，保证消息的实时性。\n- **松耦合与高扩展性**：生产者和消费者通过事件总线解耦，新增功能（如视频通话）只需增加新的消费者服务，无需改动现有业务逻辑，有利于后期快速扩展。\n- **事件溯源与可靠性保障**：事件持久化可提供消息重放、失败重试机制，结合最终一致性模型，能够在高并发下保障消息可靠投递，适合即时通讯的必达需求。\n\n### 3. 优缺点分析\n\n#### √ 优点\n\n- **高吞吐**：事件总线可水平扩展，支持百万级消息/秒，满足万人同时在线的消息峰值。\n- **松耦合**：服务间通过事件通信，独立开发、部署，变更影响范围小，便于快速迭代和扩展视频通话等新功能。\n- **天然适合流处理**：消息实时传递特性与即时通讯场景完美契合，如在线状态、消息路由等均可通过事件驱动高效实现。\n\n#### × 缺点\n\n- **追踪困难**：异步事件链导致请求路径分散，调试和故障定位复杂度高，需要引入分布式追踪（如OpenTelemetry）和事件日志中心。\n- **最终一致性复杂性**：实时性要求高的场景下，事件顺序和重复投递需谨慎处理（如去重、顺序保证），可能增加业务逻辑复杂度。\n- **运维成本较高**：事件总线本身（如Kafka集群）的运维和监控需要专门技能，同时跨服务的事务一致性需通过补偿（Saga）模式解决。\n\n> **备选架构补充说明**：\n> - **Microservices**：具备独立部署和弹性伸缩优势，但分布式事务、服务间调用延迟（尤其在实时视频通话场景）是明显短板。\n> - **CQRS**：可优化读写分离（如消息已读/未读查询），但模型同步复杂，且不适应双向实时通信，通常作为EDA的补充模式而非主干。",
+      "llm_vote": "Microservices"
+    },
+    "comparison_matrix": [
+      {
+        "style": "Event-Driven Architecture",
+        "score": 7,
+        "recommendation_type": "核心推荐",
+        "pros": [
+          "high throughput",
+          "loose coupling"
+        ],
+        "cons": [
+          "hard tracing",
+          "eventual consistency complexity"
+        ],
+        "key_reasons": [
+          "高并发场景处理能力强",
+          "实时性需求匹配度高",
+          "可扩展性强，便于后续扩展",
+          "extra rule: high concurrency favors event-driven"
+        ],
+        "key_reasons_raw": [
+          "matches feature: high_concurrency",
+          "matches feature: real_time",
+          "matches feature: scalability",
+          "extra rule: high concurrency favors event-driven"
+        ],
+        "topology_mermaid": "graph LR\nA[Client] --> B[API Gateway]\nB --> C[Producer Service]\nC --> D[(Event Bus)]\nD --> E[Consumer A]\nD --> F[Consumer B]\nD --> G[Notification Service]"
+      },
+      {
+        "style": "Microservices",
+        "score": 5,
+        "recommendation_type": "备选架构",
+        "pros": [
+          "high scalability",
+          "independent release"
+        ],
+        "cons": [
+          "distributed complexity",
+          "higher ops cost"
+        ],
+        "key_reasons": [
+          "可扩展性强，便于后续扩展",
+          "可靠性保障机制完善",
+          "大模型辅助判断确认"
+        ],
+        "key_reasons_raw": [
+          "matches feature: scalability",
+          "matches feature: reliability",
+          "llm_vote_bonus"
+        ],
+        "topology_mermaid": "graph LR\nA[Client] --> B[API Gateway]\nB --> C[User Service]\nB --> D[Order Service]\nB --> E[Payment Service]\nC --> F[(DB)]\nD --> G[(DB)]\nE --> H[(DB)]"
+      },
+      {
+        "style": "CQRS",
+        "score": 4,
+        "recommendation_type": "备选架构",
+        "pros": [
+          "optimized read/write models",
+          "good scalability"
+        ],
+        "cons": [
+          "model sync complexity",
+          "increased system complexity"
+        ],
+        "key_reasons": [
+          "高并发场景处理能力强",
+          "可扩展性强，便于后续扩展"
+        ],
+        "key_reasons_raw": [
+          "matches feature: high_concurrency",
+          "matches feature: scalability"
+        ],
+        "topology_mermaid": "graph LR\nA[Client] --> B[Command API]\nA --> C[Query API]\nB --> D[(Write DB)]\nC --> E[(Read DB)]\nD -.event sync.-> E\nF[Event Bus] -.-> D\nF -.-> E"
+      }
+    ],
+    "risk_and_suggestions": {
+      "main_risks": [
+        "事件溯源实现复杂度高，调试困难",
+        "事件一致性设计难度大，需额外处理幂等与乱序",
+        "分布式链路追踪和监控成本较高"
+      ],
+      "suggestions": [
+        "引入消息队列（如Kafka/RabbitMQ）并设置死信队列",
+        "建立事件Schema版本管理，保证向前兼容",
+        "部署分布式追踪系统（如Jaeger/Zipkin）"
+      ]
+    }
+  }
+}

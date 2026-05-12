@@ -1,0 +1,124 @@
+{
+  "styles": [
+    {
+      "name": "Layered Architecture",
+      "name_zh": "分层架构",
+      "tags": ["complex_business", "strict_consistency"],
+      "best_for": ["enterprise app", "clear domain layering"],
+      "best_for_zh": ["企业级应用", "领域边界清晰的项目"],
+      "pros": ["high maintainability", "clear responsibility boundaries"],
+      "pros_zh": ["可维护性高", "职责边界清晰"],
+      "cons": ["performance overhead across layers", "slower cross-layer changes"],
+      "cons_zh": ["跨层调用带来性能开销", "跨层变更影响面大"],
+      "topology_mermaid": "graph LR\nA[表现层] --> B[应用层]\nB --> C[领域层]\nC --> D[基础设施层]\nD --> E[(数据库)]"
+    },
+    {
+      "name": "Microservices",
+      "name_zh": "微服务架构",
+      "tags": ["scalability", "team_size_large", "reliability", "high_concurrency", "strict_consistency"],
+      "best_for": ["large teams", "independent deployment"],
+      "best_for_zh": ["大型团队", "独立部署场景"],
+      "pros": ["high scalability", "independent release"],
+      "pros_zh": ["高可扩展性", "独立发布部署"],
+      "cons": ["distributed complexity", "higher ops cost"],
+      "cons_zh": ["分布式系统复杂度高", "运维成本较高"],
+      "topology_mermaid": "graph LR\nA[客户端] --> B[API 网关]\nB --> C[用户服务]\nB --> D[订单服务]\nB --> E[支付服务]\nC --> F[(数据库)]\nD --> G[(数据库)]\nE --> H[(数据库)]"
+    },
+    {
+      "name": "Event-Driven Architecture",
+      "name_zh": "事件驱动架构",
+      "tags": ["high_concurrency", "real_time", "scalability", "data_intensive"],
+      "best_for": ["real-time messaging", "stream processing"],
+      "best_for_zh": ["实时消息系统", "流处理场景"],
+      "pros": ["high throughput", "loose coupling"],
+      "pros_zh": ["高吞吐量", "模块松耦合"],
+      "cons": ["hard tracing", "eventual consistency complexity"],
+      "cons_zh": ["链路追踪困难", "最终一致性设计复杂"],
+      "topology_mermaid": "graph LR\nA[客户端] --> B[API 网关]\nB --> C[生产者服务]\nC --> D[(事件总线)]\nD --> E[消费者A]\nD --> F[消费者B]\nD --> G[通知服务]"
+    },
+    {
+      "name": "SOA",
+      "name_zh": "面向服务架构",
+      "tags": ["complex_business", "team_size_large"],
+      "best_for": ["legacy integration", "cross-system orchestration"],
+      "best_for_zh": ["遗留系统集成", "跨系统编排"],
+      "pros": ["good interoperability", "service reuse"],
+      "pros_zh": ["互操作性好", "服务可重用"],
+      "cons": ["heavy governance", "possible ESB bottleneck"],
+      "cons_zh": ["治理机制繁重", "ESB 可能成为瓶颈"],
+      "topology_mermaid": "graph LR\nA[客户端] --> B[ESB 服务总线]\nB --> C[服务A]\nB --> D[服务B]\nB --> E[服务C]\nB --> F[遗留系统]\nC --> G[(数据库)]\nD --> H[(数据库)]"
+    },
+    {
+      "name": "Hexagonal Architecture",
+      "name_zh": "六边形架构（端口-适配器）",
+      "tags": ["complex_business", "strict_consistency"],
+      "best_for": ["domain-driven design", "testability"],
+      "best_for_zh": ["领域驱动设计", "高可测试性项目"],
+      "pros": ["high testability", "infra decoupling"],
+      "pros_zh": ["可测试性高", "基础设施解耦"],
+      "cons": ["higher learning curve", "more boilerplate"],
+      "cons_zh": ["学习曲线较陡", "样板代码较多"],
+      "topology_mermaid": "graph LR\nA[Web 适配器] --> B[端口接口]\nC[CLI 适配器] --> B\nB --> D[领域核心]\nD --> E[数据库端口]\nD --> F[消息队列端口]\nE --> G[(数据库)]\nF --> H[消息队列]"
+    },
+    {
+      "name": "Pipeline-Filter",
+      "name_zh": "管道-过滤器架构",
+      "tags": ["data_intensive", "scalability", "real_time"],
+      "best_for": ["data processing", "ETL workflows"],
+      "best_for_zh": ["数据处理系统", "ETL 工作流"],
+      "pros": ["easy stage reuse", "parallel processing"],
+      "pros_zh": ["阶段可复用", "支持并行处理"],
+      "cons": ["debug complexity", "state passing overhead"],
+      "cons_zh": ["调试复杂", "状态传递有开销"],
+      "topology_mermaid": "graph LR\nA[数据源] --> B[过滤器：解析]\nB --> C[过滤器：验证]\nC --> D[过滤器：转换]\nD --> E[过滤器：聚合]\nE --> F[数据汇]\nF --> G[(输出)]"
+    },
+    {
+      "name": "CQRS",
+      "name_zh": "命令查询职责分离",
+      "tags": ["high_concurrency", "strict_consistency", "scalability", "data_intensive"],
+      "best_for": ["read/write imbalance", "audit-heavy domains"],
+      "best_for_zh": ["读写不均衡场景", "审计密集型领域"],
+      "pros": ["optimized read/write models", "good scalability"],
+      "pros_zh": ["读写模型可独立优化", "扩展性好"],
+      "cons": ["model sync complexity", "increased system complexity"],
+      "cons_zh": ["模型同步复杂", "系统整体复杂度增加"],
+      "topology_mermaid": "graph LR\nA[客户端] --> B[命令 API]\nA --> C[查询 API]\nB --> D[(写数据库)]\nC --> E[(读数据库)]\nD -.事件同步.-> E\nF[事件总线] -.-> D\nF -.-> E"
+    },
+    {
+      "name": "Serverless",
+      "name_zh": "无服务器架构",
+      "tags": ["scalability", "real_time"],
+      "best_for": ["bursty workloads", "fast iteration"],
+      "best_for_zh": ["突发性负载", "快速迭代场景"],
+      "pros": ["auto scaling", "low initial ops effort"],
+      "pros_zh": ["自动弹性伸缩", "初期运维成本低"],
+      "cons": ["vendor lock-in", "cold start latency"],
+      "cons_zh": ["供应商锁定", "冷启动延迟"],
+      "topology_mermaid": "graph LR\nA[客户端] --> B[API 网关]\nB --> C[函数A]\nB --> D[函数B]\nC --> E[(云数据库)]\nD --> F[对象存储]\nG[事件触发器] --> C\nG --> D"
+    },
+    {
+      "name": "Space-Based",
+      "name_zh": "空间架构",
+      "tags": ["high_concurrency", "reliability"],
+      "best_for": ["extreme traffic", "in-memory data grids"],
+      "best_for_zh": ["极端流量场景", "内存数据网格"],
+      "pros": ["avoids DB bottleneck", "elastic under peaks"],
+      "pros_zh": ["避免数据库瓶颈", "峰值弹性扩展"],
+      "cons": ["complex consistency model", "higher memory cost"],
+      "cons_zh": ["一致性模型复杂", "内存成本较高"],
+      "topology_mermaid": "graph LR\nA[负载均衡器] --> B[处理单元A]\nA --> C[处理单元B]\nB --> D[(内存网格)]\nC --> D\nD --> E[(异步数据库持久化)]\nB -.复制.-> C"
+    },
+    {
+      "name": "Client-Server",
+      "name_zh": "客户端-服务器架构",
+      "tags": ["deployment_constraint"],
+      "best_for": ["classic enterprise LAN apps", "simple request-response"],
+      "best_for_zh": ["经典企业局域网应用", "简单请求-响应模式"],
+      "pros": ["simple architecture", "easy to reason about"],
+      "pros_zh": ["架构简单", "易于理解和维护"],
+      "cons": ["central bottleneck", "limited elasticity"],
+      "cons_zh": ["服务器端可能成为瓶颈", "弹性扩展能力有限"],
+      "topology_mermaid": "graph LR\nA[客户端A] --> C[服务器]\nB[客户端B] --> C\nC --> D[(数据库)]\nC --> E[文件存储]"
+    }
+  ]
+}

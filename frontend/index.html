@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>架构风格智能助手</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+  <main class="wrap">
+    <h1>架构风格智能助手</h1>
+    <p class="desc">输入需求描述，输出候选架构、最终推荐与对比矩阵。</p>
+
+    <textarea id="requirement" rows="7" placeholder="例如：开发一个跨平台即时通讯系统，支持万人同时在线，消息实时可靠，后续扩展视频通话。"></textarea>
+    <button id="submit">开始推荐</button>
+
+    <section id="result" class="hidden">
+      <h2>推荐结果</h2>
+      <div id="summary" class="summary"></div>
+
+      <div id="features-card" class="features-card"></div>
+
+      <h3>架构对比矩阵</h3>
+      <table id="matrix">
+        <thead>
+          <tr>
+            <th>推荐</th>
+            <th>架构风格</th>
+            <th>得分</th>
+            <th>关键理由</th>
+            <th>优点</th>
+            <th>缺点</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+
+      <h3>推荐拓扑图</h3>
+      <div id="topology"></div>
+
+      <h3>原始响应</h3>
+      <pre id="output"></pre>
+    </section>
+  </main>
+
+  <script>
+    mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
+    marked.setOptions({ breaks: true, gfm: true });
+
+    const btn = document.getElementById('submit');
+    const input = document.getElementById('requirement');
+    const output = document.getElementById('output');
+    const result = document.getElementById('result');
+    const summary = document.getElementById('summary');
+    const matrixBody = document.querySelector('#matrix tbody');
+    const topology = document.getElementById('topology');
+
+    function buildTopology(matrixRows, recommendedStyle) {
+      if (matrixRows && matrixRows.length) {
+        const matched = matrixRows.find(r => r.style === recommendedStyle);
+        if (matched && matched.topology_mermaid) {
+          return matched.topology_mermaid;
+        }
+      }
+      return `graph LR\nA[客户端] --> B[API 网关]\nB --> C[业务逻辑]\nC --> D[(数据库)]`;
+    }
+
+    function renderMatrix(rows) {
+      matrixBody.innerHTML = '';
+      rows.forEach((row) => {
+        const styleName = row.style_zh || row.style || '-';
+        const prosList = (row.pros_zh && row.pros_zh.length ? row.pros_zh : row.pros) || [];
+        const consList = (row.cons_zh && row.cons_zh.length ? row.cons_zh : row.cons) || [];
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td style="font-weight:600">${row.recommendation_type || '-'}</td>
+          <td>${styleName}</td>
+          <td>${row.score ?? '-'}</td>
+          <td>${(row.key_reasons || []).join('; ') || '-'}</td>
+          <td>${prosList.join('; ') || '-'}</td>
+          <td>${consList.join('; ') || '-'}</td>
+        `;
+        matrixBody.appendChild(tr);
+      });
+    }
+
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.innerText = '分析中...';
+      try {
+        const resp = await fetch('http://localhost:8000/api/v1/recommend', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requirement: input.value })
+        });
+        const data = await resp.json();
+
+        const recommendedZh = data?.final_report?.recommended_style_zh || data?.final_report?.recommended_style || '未知';
+        const alternatives = data?.final_report?.alternative_styles_zh || data?.final_report?.alternative_styles || [];
+        const llmSummary = data?.final_report?.decision_basis?.llm_summary || '';
+        const altText = alternatives.length ? `（备选：${alternatives.join('、')}）` : '';
+
+        summary.innerHTML = `
+          <strong>核心推荐：</strong>${recommendedZh} ${altText}
+          <div class="llm-report">${marked.parse(llmSummary)}</div>
+        `;
+
+        const matrix = data?.final_report?.comparison_matrix || [];
+        renderMatrix(matrix);
+
+        result.classList.remove('hidden');
+        const topoDef = buildTopology(matrix, data?.final_report?.recommended_style);
+        try {
+          const { svg } = await mermaid.render('topology-svg', topoDef);
+          topology.innerHTML = svg;
+        } catch (err) {
+          topology.innerHTML = `<pre style="color:#999;font-size:13px;">${topoDef}</pre>`;
+        }
+
+        const feats = data?.extracted_features || {};
+        const featHits = data?.feature_hits || {};
+        const activeFeats = Object.entries(feats)
+          .filter(([_, v]) => v)
+          .map(([k]) => {
+            const labels = {
+              high_concurrency: '高并发', real_time: '实时性', reliability: '可靠性',
+              scalability: '可扩展性', complex_business: '复杂业务', strict_consistency: '强一致性',
+              deployment_constraint: '部署约束', data_intensive: '数据密集型',
+              team_size_large: '多团队', security: '安全性'
+            };
+            const hits = (featHits[k] || []).join(' / ');
+            return `<span class="feat-tag">${labels[k] || k} <small>(${hits})</small></span>`;
+          });
+        const featDiv = document.getElementById('features-card');
+        if (featDiv) {
+          featDiv.innerHTML = activeFeats.length
+            ? '<strong>识别特征：</strong>' + activeFeats.join(' ')
+            : '<span class="feat-tag dim">未识别到明显特征</span>';
+        }
+
+        output.textContent = JSON.stringify(data, null, 2);
+      } catch (e) {
+        output.textContent = '请求失败：' + e;
+        result.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+        btn.innerText = '开始推荐';
+      }
+    });
+  </script>
+</body>
+</html>

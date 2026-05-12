@@ -1,0 +1,22 @@
+[
+  {"id": 1, "requirement": "开发跨平台即时通讯系统，支持万人在线，消息实时可靠，后续扩展视频通话。", "expected_style": "Event-Driven Architecture", "expected_tags": ["high_concurrency", "real_time", "reliability", "scalability"]},
+  {"id": 2, "requirement": "构建电商平台，订单支付库存需要强一致事务，双11高峰要抗压。", "expected_style": "Microservices", "expected_tags": ["strict_consistency", "high_concurrency", "scalability"]},
+  {"id": 3, "requirement": "企业内部审批系统，流程复杂、规则多、需要稳定迭代。", "expected_style": "Layered Architecture", "expected_tags": ["complex_business", "reliability"]},
+  {"id": 4, "requirement": "日志分析平台，每秒采集百万条日志并实时告警。", "expected_style": "Event-Driven Architecture", "expected_tags": ["data_intensive", "real_time", "high_concurrency"]},
+  {"id": 5, "requirement": "银行核心账务系统，要求高可靠和强一致，审计可追溯。", "expected_style": "Microservices", "expected_tags": ["strict_consistency", "reliability", "security"]},
+  {"id": 6, "requirement": "在线教育平台，课程直播和互动消息需要低延迟。", "expected_style": "Event-Driven Architecture", "expected_tags": ["real_time", "high_concurrency"]},
+  {"id": 7, "requirement": "物联网设备管理系统，多地域部署，设备状态上报频繁。", "expected_style": "Event-Driven Architecture", "expected_tags": ["deployment_constraint", "high_concurrency", "real_time"]},
+  {"id": 8, "requirement": "短视频平台，读写比高，推荐流高并发访问。", "expected_style": "CQRS", "expected_tags": ["high_concurrency", "scalability", "data_intensive"]},
+  {"id": 9, "requirement": "政务系统私有化部署，强调安全隔离和可靠交付。", "expected_style": "Client-Server", "expected_tags": ["deployment_constraint", "security", "reliability"]},
+  {"id": 10, "requirement": "多团队协作开发SaaS平台，需要模块独立发布。", "expected_style": "Microservices", "expected_tags": ["team_size_large", "scalability"]},
+  {"id": 11, "requirement": "医疗影像处理系统，图像处理链路长，适合分阶段流水线。", "expected_style": "Event-Driven Architecture", "expected_tags": ["data_intensive"]},
+  {"id": 12, "requirement": "跨系统数据同步平台，需要事件通知和异步解耦。", "expected_style": "Event-Driven Architecture", "expected_tags": ["real_time", "scalability", "data_intensive"]},
+  {"id": 13, "requirement": "企业数据中台，ETL任务复杂，要求可扩展和可观测。", "expected_style": "Event-Driven Architecture", "expected_tags": ["data_intensive", "scalability"]},
+  {"id": 14, "requirement": "内容管理系统，业务逻辑清晰，强调维护性和权限分层。", "expected_style": "Layered Architecture", "expected_tags": ["complex_business", "security"]},
+  {"id": 15, "requirement": "外卖平台，订单峰值高，配送状态实时更新。", "expected_style": "Event-Driven Architecture", "expected_tags": ["high_concurrency", "real_time", "scalability"]},
+  {"id": 16, "requirement": "证券交易周边系统，低延迟和高吞吐并重，容错要求高。", "expected_style": "Event-Driven Architecture", "expected_tags": ["high_concurrency", "real_time", "reliability"]},
+  {"id": 17, "requirement": "客服系统接入多渠道消息，要求弹性扩容和可靠投递。", "expected_style": "Event-Driven Architecture", "expected_tags": ["scalability", "reliability", "real_time"]},
+  {"id": 18, "requirement": "科研数据处理系统，批处理和流处理并存。", "expected_style": "Pipeline-Filter", "expected_tags": ["data_intensive"]},
+  {"id": 19, "requirement": "校园管理平台，本地部署，功能模块较稳定。", "expected_style": "Client-Server", "expected_tags": ["deployment_constraint"]},
+  {"id": 20, "requirement": "跨境支付网关，要求多服务隔离、审计和高可用。", "expected_style": "Microservices", "expected_tags": ["security", "reliability", "scalability"]}
+]
