@@ -23,6 +23,7 @@ class ArchitectureWorkflowState(TypedDict, total=False):
 
     # ── 匹配阶段 (match_node) ──
     candidates: List[Dict[str, Any]]
+    combination_candidates: List[Dict[str, Any]]
 
     # ── 评估阶段 (evaluate_node) ──
     final_report: Dict[str, Any]

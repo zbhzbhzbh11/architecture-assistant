@@ -148,6 +148,7 @@ async def _langgraph_orchestrate(payload: RecommendRequest) -> Dict[str, Any]:
         "extracted_features": {},
         "feature_hits": {},
         "candidates": [],
+        "combination_candidates": [],
         "final_report": {},
         "errors": [],
         "trace": [],

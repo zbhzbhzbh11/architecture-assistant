@@ -73,7 +73,10 @@ async def _match_node(state: ArchitectureWorkflowState) -> Dict[str, Any]:
         elapsed = round((time.perf_counter() - t0) * 1000)
         logger.info(f"[LangGraph] match_node done in {elapsed}ms")
         state.setdefault("trace", []).append({"node": "match", "elapsed_ms": elapsed, "status": "ok"})
-        return {"candidates": data.get("candidates", [])}
+        return {
+            "candidates": data.get("candidates", []),
+            "combination_candidates": data.get("combination_candidates", []),
+        }
     except Exception as e:
         elapsed = round((time.perf_counter() - t0) * 1000)
         state.setdefault("trace", []).append({"node": "match", "elapsed_ms": elapsed, "status": "error", "error": str(e)})
