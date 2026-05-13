@@ -230,7 +230,7 @@ def get_cache_stats() -> Dict[str, Any]:
     return stats
 
 
-@app.post("/cache/clear")
+@app.api_route("/cache/clear", methods=["GET", "POST"])
 def clear_cache() -> Dict[str, Any]:
     count = cache_clear()
     return {"status": "ok", "cleared": count}
