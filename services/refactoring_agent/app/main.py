@@ -153,11 +153,6 @@ def detect_smells(requirement: str, features: Dict[str, bool]) -> List[Dict[str,
     for key, smell in ARCHITECTURE_SMELLS.items():
         if any(kw in requirement for kw in smell["keywords"]):
             detected.append({"id": key, "name_zh": smell["name_zh"], "description": smell["description"]})
-            continue
-        # 特征推断
-        if key == "scaling_bottleneck" and features.get("high_concurrency") and features.get("scalability"):
-            if key not in {d["id"] for d in detected}:
-                detected.append({"id": key, "name_zh": smell["name_zh"], "description": smell["description"]})
 
     return detected
 
