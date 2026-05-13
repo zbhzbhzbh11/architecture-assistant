@@ -318,6 +318,23 @@ class GraphRepository:
             logger.warning(f"Neo4j graph_match failed: {e}")
             return None
 
+    # ── 图状态 ──────────────────────────────────────────────────
+
+    @staticmethod
+    def graph_status() -> Dict[str, Any]:
+        driver = _get_driver()
+        if driver is None:
+            return {"backend": "neo4j", "neo4j_available": False, "node_count": 0, "relationship_count": 0, "error": "Cannot connect to Neo4j"}
+        try:
+            with driver.session() as session:
+                node_count = session.run("MATCH (n) RETURN count(n) AS cnt").single()["cnt"]
+                rel_count = session.run("MATCH ()-[r]->() RETURN count(r) AS cnt").single()["cnt"]
+            driver.close()
+            return {"backend": "neo4j", "neo4j_available": True, "node_count": node_count, "relationship_count": rel_count, "uri": NEO4J_URI}
+        except Exception as e:
+            driver.close()
+            return {"backend": "neo4j", "neo4j_available": False, "error": str(e)}
+
     # ── 架构组合 ────────────────────────────────────────────────
 
     @staticmethod

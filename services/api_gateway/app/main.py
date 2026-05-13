@@ -192,7 +192,7 @@ async def recommend(payload: RecommendRequest) -> Dict[str, Any]:
     # ── 重构建议 (失败不阻塞主链路) ──
     refactoring_advice = {}
     try:
-        async with httpx.AsyncClient(timeout=8.0, trust_env=False) as ref_client:
+        async with httpx.AsyncClient(timeout=25.0, trust_env=False) as ref_client:
             ref_resp = await ref_client.post(
                 f"{REFACTORING_AGENT_URL}/refactor",
                 json={

@@ -2,10 +2,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY refactoring-agent/requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+COPY refactoring_agent/requirements.txt ./
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple --trusted-host pypi.tuna.tsinghua.edu.cn -r requirements.txt
 
-COPY refactoring-agent/app ./app
+COPY refactoring_agent/app ./app
 
 EXPOSE 8005
 

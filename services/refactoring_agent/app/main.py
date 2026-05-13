@@ -156,7 +156,7 @@ def detect_smells(requirement: str, features: Dict[str, bool]) -> List[Dict[str,
             continue
         # 特征推断
         if key == "scaling_bottleneck" and features.get("high_concurrency") and features.get("scalability"):
-            if smell["id"] not in {d["id"] for d in detected}:
+            if key not in {d["id"] for d in detected}:
                 detected.append({"id": key, "name_zh": smell["name_zh"], "description": smell["description"]})
 
     return detected

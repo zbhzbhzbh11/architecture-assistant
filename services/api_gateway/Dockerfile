@@ -2,11 +2,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY api-gateway/requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+COPY api_gateway/requirements.txt ./
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple --trusted-host pypi.tuna.tsinghua.edu.cn -r requirements.txt
 
 COPY common ./common
-COPY api-gateway/app ./app
+COPY api_gateway/app ./app
 
 EXPOSE 8000
 

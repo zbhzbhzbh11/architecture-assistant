@@ -2,12 +2,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+COPY knowledge_base/requirements.txt ./
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple --trusted-host pypi.tuna.tsinghua.edu.cn -r requirements.txt
 
-COPY app ./app
-COPY data ./data
-COPY init ./init
+COPY knowledge_base/app ./app
+COPY knowledge_base/data ./data
+COPY knowledge_base/init ./init
 
 EXPOSE 8004
 

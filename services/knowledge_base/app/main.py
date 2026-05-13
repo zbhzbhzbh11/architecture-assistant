@@ -111,7 +111,7 @@ def get_feedback_stats() -> Dict[str, Any]:
 
 
 @app.get("/health")
-def health() -> Dict[str, str]:
+def health() -> Dict[str, Any]:
     backend_info = _repo("graph_status") if _prefer_graph() else {"backend": "json"}
     return {
         "status": "ok",

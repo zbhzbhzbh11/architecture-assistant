@@ -4,7 +4,7 @@ services:
   api-gateway:
     build:
       context: ./services
-      dockerfile: api-gateway/Dockerfile
+      dockerfile: api_gateway/Dockerfile
     container_name: api-gateway
     ports:
       - "8000:8000"
@@ -26,7 +26,7 @@ services:
   requirements-agent:
     build:
       context: ./services
-      dockerfile: requirements-agent/Dockerfile
+      dockerfile: requirements_agent/Dockerfile
     container_name: requirements-agent
     ports:
       - "8001:8001"
@@ -36,7 +36,9 @@ services:
       LLM_MODEL: ${LLM_MODEL:-}
 
   matching-agent:
-    build: ./services/matching-agent
+    build:
+      context: ./services
+      dockerfile: matching_agent/Dockerfile
     container_name: matching-agent
     ports:
       - "8002:8002"
@@ -48,7 +50,7 @@ services:
   evaluation-agent:
     build:
       context: ./services
-      dockerfile: evaluation-agent/Dockerfile
+      dockerfile: evaluation_agent/Dockerfile
     container_name: evaluation-agent
     ports:
       - "8003:8003"
@@ -56,9 +58,12 @@ services:
       LLM_API_BASE: ${LLM_API_BASE:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-}
+      KNOWLEDGE_BASE_URL: http://knowledge-base:8004
 
   knowledge-base:
-    build: ./services/knowledge-base
+    build:
+      context: ./services
+      dockerfile: knowledge_base/Dockerfile
     container_name: knowledge-base
     ports:
       - "8004:8004"
@@ -73,7 +78,7 @@ services:
   refactoring-agent:
     build:
       context: ./services
-      dockerfile: refactoring-agent/Dockerfile
+      dockerfile: refactoring_agent/Dockerfile
     container_name: refactoring-agent
     ports:
       - "8005:8005"

@@ -1,24 +1,24 @@
 {
   "summary": {
-    "timestamp": "2026-05-12T19:08:59",
+    "timestamp": "2026-05-12T21:11:01",
     "gateway_url": "http://localhost:8000/api/v1/recommend",
     "total_cases": 20,
-    "passed_cases": 19,
-    "pass_rate": 0.95,
-    "avg_latency_ms": 50877.27,
+    "passed_cases": 20,
+    "pass_rate": 1.0,
+    "avg_latency_ms": 30116.71,
     "metrics": {
-      "top3_rate": 0.95,
-      "mainstream_coverage_rate": 0.95,
-      "final_recommendation_rate": 0.95,
-      "explainability_rate": 0.95,
-      "matrix_rate": 0.95
+      "top3_rate": 1.0,
+      "mainstream_coverage_rate": 1.0,
+      "final_recommendation_rate": 1.0,
+      "explainability_rate": 1.0,
+      "matrix_rate": 1.0
     }
   },
   "rows": [
     {
       "id": 1,
       "status": 200,
-      "latency_ms": 16045.82,
+      "latency_ms": 19442.09,
       "recommended_style": "Event-Driven Architecture",
       "has_top3": true,
       "mainstream_covered": true,
@@ -30,8 +30,8 @@
     {
       "id": 2,
       "status": 200,
-      "latency_ms": 27435.98,
-      "recommended_style": "Microservices",
+      "latency_ms": 38549.64,
+      "recommended_style": "Layered Architecture",
       "has_top3": true,
       "mainstream_covered": true,
       "has_final": true,
@@ -42,7 +42,7 @@
     {
       "id": 3,
       "status": 200,
-      "latency_ms": 32380.25,
+      "latency_ms": 38263.91,
       "recommended_style": "Layered Architecture",
       "has_top3": true,
       "mainstream_covered": true,
@@ -54,7 +54,7 @@
     {
       "id": 4,
       "status": 200,
-      "latency_ms": 28740.86,
+      "latency_ms": 37390.2,
       "recommended_style": "Event-Driven Architecture",
       "has_top3": true,
       "mainstream_covered": true,
@@ -66,8 +66,8 @@
     {
       "id": 5,
       "status": 200,
-      "latency_ms": 21856.62,
-      "recommended_style": "Microservices",
+      "latency_ms": 29101.04,
+      "recommended_style": "Layered Architecture",
       "has_top3": true,
       "mainstream_covered": true,
       "has_final": true,
@@ -78,7 +78,7 @@
     {
       "id": 6,
       "status": 200,
-      "latency_ms": 36562.77,
+      "latency_ms": 28619.46,
       "recommended_style": "Event-Driven Architecture",
       "has_top3": true,
       "mainstream_covered": true,
@@ -90,7 +90,7 @@
     {
       "id": 7,
       "status": 200,
-      "latency_ms": 27161.11,
+      "latency_ms": 31411.54,
       "recommended_style": "Event-Driven Architecture",
       "has_top3": true,
       "mainstream_covered": true,
@@ -102,8 +102,8 @@
     {
       "id": 8,
       "status": 200,
-      "latency_ms": 28142.16,
-      "recommended_style": "Event-Driven Architecture",
+      "latency_ms": 35802.12,
+      "recommended_style": "CQRS",
       "has_top3": true,
       "mainstream_covered": true,
       "has_final": true,
@@ -114,8 +114,8 @@
     {
       "id": 9,
       "status": 200,
-      "latency_ms": 22202.71,
-      "recommended_style": "Client-Server",
+      "latency_ms": 27922.42,
+      "recommended_style": "Layered Architecture",
       "has_top3": true,
       "mainstream_covered": true,
       "has_final": true,
@@ -126,7 +126,7 @@
     {
       "id": 10,
       "status": 200,
-      "latency_ms": 19692.5,
+      "latency_ms": 25128.79,
       "recommended_style": "Microservices",
       "has_top3": true,
       "mainstream_covered": true,
@@ -138,8 +138,8 @@
     {
       "id": 11,
       "status": 200,
-      "latency_ms": 31594.11,
-      "recommended_style": "SOA",
+      "latency_ms": 34920.1,
+      "recommended_style": "Event-Driven Architecture",
       "has_top3": true,
       "mainstream_covered": true,
       "has_final": true,
@@ -150,8 +150,8 @@
     {
       "id": 12,
       "status": 200,
-      "latency_ms": 34457.77,
-      "recommended_style": "Event-Driven Architecture",
+      "latency_ms": 33403.54,
+      "recommended_style": "Pipeline-Filter",
       "has_top3": true,
       "mainstream_covered": true,
       "has_final": true,
@@ -162,7 +162,7 @@
     {
       "id": 13,
       "status": 200,
-      "latency_ms": 36366.59,
+      "latency_ms": 28075.41,
       "recommended_style": "Event-Driven Architecture",
       "has_top3": true,
       "mainstream_covered": true,
@@ -174,7 +174,7 @@
     {
       "id": 14,
       "status": 200,
-      "latency_ms": 27026.93,
+      "latency_ms": 29191.79,
       "recommended_style": "Layered Architecture",
       "has_top3": true,
       "mainstream_covered": true,
@@ -186,7 +186,7 @@
     {
       "id": 15,
       "status": 200,
-      "latency_ms": 25733.53,
+      "latency_ms": 24938.77,
       "recommended_style": "Event-Driven Architecture",
       "has_top3": true,
       "mainstream_covered": true,
@@ -198,7 +198,7 @@
     {
       "id": 16,
       "status": 200,
-      "latency_ms": 28757.81,
+      "latency_ms": 16191.4,
       "recommended_style": "Event-Driven Architecture",
       "has_top3": true,
       "mainstream_covered": true,
@@ -210,7 +210,7 @@
     {
       "id": 17,
       "status": 200,
-      "latency_ms": 15449.81,
+      "latency_ms": 29279.1,
       "recommended_style": "Event-Driven Architecture",
       "has_top3": true,
       "mainstream_covered": true,
@@ -222,8 +222,8 @@
     {
       "id": 18,
       "status": 200,
-      "latency_ms": 32425.2,
-      "recommended_style": "Pipeline-Filter",
+      "latency_ms": 34631.96,
+      "recommended_style": "Event-Driven Architecture",
       "has_top3": true,
       "mainstream_covered": true,
       "has_final": true,
@@ -233,15 +233,20 @@
     },
     {
       "id": 19,
-      "status": 502,
-      "latency_ms": 493503.4,
-      "pass": false,
-      "error": "HTTP 502"
+      "status": 200,
+      "latency_ms": 22440.2,
+      "recommended_style": "Layered Architecture",
+      "has_top3": true,
+      "mainstream_covered": true,
+      "has_final": true,
+      "explainable": true,
+      "has_matrix": true,
+      "pass": true
     },
     {
       "id": 20,
       "status": 200,
-      "latency_ms": 32009.42,
+      "latency_ms": 37630.79,
       "recommended_style": "Microservices",
       "has_top3": true,
       "mainstream_covered": true,
