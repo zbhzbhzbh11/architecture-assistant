@@ -1,11 +1,17 @@
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Dict, List
 
 import httpx
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
+
+# ── 本地开发: 将 services/ 加入 sys.path (Docker 中 WORKDIR 已包含) ──
+_SERVICES_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(_SERVICES_ROOT) not in sys.path:
+    sys.path.insert(0, str(_SERVICES_ROOT))
 
 # Auto-load .env if exists
 _ENV_PATH = Path(__file__).resolve().parent.parent.parent.parent / ".env"
@@ -88,13 +94,21 @@ async def llm_semantic_supplement(text: str, features: Dict[str, bool],
         return features
 
     logger.info(f"Rule hits only {active_count} dimensions, requesting LLM supplement...")
-    zh_labels = ", ".join(FEATURE_LABELS_ZH.values())
-    prompt = (
-        "分析以下软件需求描述, 判断是否涉及这些特征维度: "
-        f"{zh_labels}。"
-        "返回严格的 JSON 格式: {\"特征名\": true/false}, 不要输出其他内容。"
-        f"\n\n需求: {text}"
-    )
+
+    # 尝试使用 few-shot prompt, 不可用时降级为零样本
+    try:
+        from common.prompts.requirements_few_shot import build_few_shot_prompt
+        prompt = build_few_shot_prompt(text)
+        logger.info("Using few-shot prompt for requirements supplement")
+    except ImportError:
+        logger.info("Few-shot module not available, using zero-shot prompt")
+        zh_labels = ", ".join(FEATURE_LABELS_ZH.values())
+        prompt = (
+            "分析以下软件需求描述, 判断是否涉及这些特征维度: "
+            f"{zh_labels}。"
+            "返回严格的 JSON 格式: {\"特征名\": true/false}, 不要输出其他内容。"
+            f"\n\n需求: {text}"
+        )
     headers = {"Authorization": f"Bearer {LLM_API_KEY}", "Content-Type": "application/json"}
     body = {
         "model": LLM_MODEL,

@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import sys
 import logging
 from pathlib import Path
 from typing import Any, Dict, List
@@ -8,6 +9,11 @@ from typing import Any, Dict, List
 import httpx
 from fastapi import FastAPI
 from pydantic import BaseModel
+
+# ── 本地开发: 将 services/ 加入 sys.path (Docker 中 WORKDIR 已包含) ──
+_SERVICES_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(_SERVICES_ROOT) not in sys.path:
+    sys.path.insert(0, str(_SERVICES_ROOT))
 
 # Auto-load .env if exists (fallback for when not launched via docker-compose)
 _ENV_PATH = Path(__file__).resolve().parent.parent.parent.parent / ".env"
@@ -30,17 +36,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger("evaluation-agent")
 
-app = FastAPI(title="Evaluation Agent", version="0.1.0")
+app = FastAPI(title="Evaluation Agent", version="0.2.0")
 
 LLM_API_BASE = os.getenv("LLM_API_BASE", "").strip()
 LLM_API_KEY = os.getenv("LLM_API_KEY", "").strip()
 LLM_MODEL = os.getenv("LLM_MODEL", "").strip()
+KNOWLEDGE_BASE_URL = os.getenv("KNOWLEDGE_BASE_URL", "http://localhost:8004").strip()
 
 
 class EvaluateRequest(BaseModel):
     requirement: str
     features: Dict[str, bool]
     candidates: List[Dict[str, Any]]
+    combination_candidates: List[Dict[str, Any]] = []
 
 
 @app.get("/health")
@@ -54,19 +62,32 @@ async def llm_summary(requirement: str, candidates: List[Dict[str, Any]], best_s
         return _fallback_summary(best_style, candidates)
 
     cand_names = [c.get("style", "") for c in candidates if c.get("style") != best_style]
+    alt_styles = ", ".join(cand_names[:2]) if cand_names else "无"
+    candidates_json = json.dumps(candidates, ensure_ascii=False)
     logger.info(f"Requesting LLM summary for {len(candidates)} candidates...")
-    prompt = (
-        "你是一个软件架构评审专家。根据用户需求和候选架构，请用中文输出以下内容：\n\n"
-        "1. 推荐架构：【核心推荐】和【备选架构】\n"
-        "2. 推荐理由：（2-3条要点）\n"
-        "3. 优缺点分析：\n"
-        "   √ 优点：...\n"
-        "   × 缺点：...\n\n"
-        f"用户需求：{requirement}\n"
-        f"核心推荐：{best_style}\n"
-        f"备选架构：{', '.join(cand_names[:2]) if cand_names else '无'}\n"
-        f"候选详情：{json.dumps(candidates, ensure_ascii=False)}\n"
-    )
+
+    # 尝试使用 few-shot prompt, 不可用时降级为零样本
+    try:
+        from common.prompts.evaluation_few_shot import build_few_shot_prompt
+        prompt = build_few_shot_prompt(requirement, best_style, alt_styles, candidates_json)
+        logger.info("Using few-shot prompt for evaluation summary")
+    except ImportError:
+        logger.info("Few-shot module not available, using zero-shot prompt")
+        prompt = (
+            "你是一个软件架构评审专家。根据用户需求和候选架构，请用中文输出以下内容：\n\n"
+            "1. 推荐架构：【核心推荐】和【备选架构】\n"
+            "2. 推荐理由：（2-3条要点）\n"
+            "3. 优缺点分析：\n"
+            "   √ 优点：...\n"
+            "   × 缺点：...\n"
+            "4. 风险与建议：\n"
+            "   风险：...\n"
+            "   建议：...\n\n"
+            f"用户需求：{requirement}\n"
+            f"核心推荐：{best_style}\n"
+            f"备选架构：{alt_styles}\n"
+            f"候选详情：{candidates_json}\n"
+        )
 
     headers = {"Authorization": f"Bearer {LLM_API_KEY}", "Content-Type": "application/json"}
     body = {
@@ -290,7 +311,25 @@ async def evaluate(payload: EvaluateRequest) -> Dict[str, Any]:
         })
 
     best_zh = best.get("style_zh", best_style)
-    return {
+    risk_info = _dynamic_risks(best_style, ranked)
+
+    # ── 组合架构推荐 ──
+    recommended_combination = {}
+    combos = getattr(payload, 'combination_candidates', None) or []
+    if combos:
+        best_combo = combos[0]
+        recommended_combination = {
+            "name": best_combo.get("combination_name", ""),
+            "name_zh": best_combo.get("combination_name_zh", ""),
+            "combo_score": best_combo.get("combo_score", 0),
+            "components": best_combo.get("component_details", []),
+            "synergy_zh": best_combo.get("synergy_zh", ""),
+            "reasons": best_combo.get("reasons", []),
+            "complexity_penalty": best_combo.get("complexity_penalty", 0),
+            "topology_mermaid": best_combo.get("topology_mermaid", ""),
+        }
+
+    report = {
         "recommended_style": best_style,
         "recommended_style_zh": best_zh,
         "alternative_styles": [c.get("style") for c in ranked[1:]],
@@ -302,5 +341,52 @@ async def evaluate(payload: EvaluateRequest) -> Dict[str, Any]:
             "llm_vote": llm_vote,
         },
         "comparison_matrix": comparison_matrix,
-        "risk_and_suggestions": _dynamic_risks(best_style, ranked),
+        "risk_and_suggestions": risk_info,
+        "recommended_combination": recommended_combination,
+        "combination_candidates": combos[:3],
     }
+
+    # ── ADR 自动生成 (失败不阻塞推荐) ──
+    adr_status = "not_generated"
+    adr_id = None
+    try:
+        graph_evidence = {
+            "matched_attributes": best.get("matched_attributes", []),
+            "matched_scenarios": best.get("matched_scenarios", []),
+            "combinable_styles": best.get("combinable_styles", []),
+            "graph_score": best.get("graph_score", 0),
+        }
+        async with httpx.AsyncClient(timeout=5.0, trust_env=False) as adr_client:
+            adr_resp = await adr_client.post(
+                f"{KNOWLEDGE_BASE_URL}/adr",
+                json={
+                    "requirement": payload.requirement,
+                    "extracted_features": payload.features,
+                    "candidates": [c for c in ranked[:3]],
+                    "recommended_style": best_style,
+                    "recommended_style_zh": best_zh,
+                    "alternative_styles": [c.get("style") for c in ranked[1:]],
+                    "decision_basis": report["decision_basis"],
+                    "risk_and_suggestions": risk_info,
+                    "graph_evidence": graph_evidence,
+                },
+            )
+            if adr_resp.status_code == 200:
+                adr_data = adr_resp.json()
+                adr_id = adr_data.get("adr_id")
+                adr_status = "ok"
+                logger.info(f"ADR generated: {adr_id}")
+            else:
+                adr_status = "failed"
+                logger.warning(f"ADR generation failed: HTTP {adr_resp.status_code}")
+    except Exception as e:
+        adr_status = "failed"
+        logger.warning(f"ADR generation failed (non-fatal): {e}")
+
+    report["adr"] = {
+        "adr_id": adr_id,
+        "adr_status": adr_status,
+        "adr_summary": f"ADR for '{payload.requirement[:40]}...' → {best_style}" if adr_id else None,
+        "api_path": f"/adr/{adr_id}" if adr_id else None,
+    }
+    return report

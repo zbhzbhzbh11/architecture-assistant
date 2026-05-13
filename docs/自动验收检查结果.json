@@ -1,9 +1,9 @@
 {
-  "check_time": "2026-05-07T17:26:41",
+  "check_time": "2026-05-13T10:36:23",
   "project_root": "D:\\桌面\\大作业\\软件体系\\architecture-assistant",
   "summary": {
-    "total_checks": 21,
-    "passed": 21,
+    "total_checks": 43,
+    "passed": 43,
     "failed": 0,
     "warnings": 0,
     "pass_rate": 1.0,
@@ -46,9 +46,9 @@
     {
       "id": "AGT-COUNT",
       "category": "2. Agent 模块",
-      "name": "Agent 数量 >= 3: 当前 4 个",
+      "name": "Agent 数量 >= 3: 当前 13 个",
       "status": "通过",
-      "detail": "检测到 4 个候选 Agent 文件:\n  - services\\requirements_agent\\app\\main.py (agent)\n  - services\\matching_agent\\app\\main.py (agent)\n  - services\\evaluation_agent\\app\\main.py (agent)\n  - services\\api_gateway\\app\\main.py (AGENT)",
+      "detail": "检测到 13 个候选 Agent 文件:\n  - services\\requirements_agent\\app\\main.py (agent)\n  - services\\refactoring_agent\\app\\main.py (agent)\n  - services\\matching_agent\\app\\combo_matcher.py (agent)\n  - services\\matching_agent\\app\\graph_matcher.py (agent)\n  - services\\matching_agent\\app\\main.py (agent)\n  - services\\knowledge_base\\app\\graph_repository.py (agent)\n  - services\\knowledge_base\\app\\main.py (agent)\n  - services\\knowledge_base\\init\\init_neo4j.py (agent)\n  - services\\evaluation_agent\\app\\main.py (agent)\n  - services\\common\\prompts\\evaluation_few_shot.py (Agent)\n  - services\\common\\prompts\\requirements_few_shot.py (Agent)\n  - services\\api_gateway\\app\\langchain_workflow.py (Agent)\n  - services\\api_gateway\\app\\main.py (AGENT)",
       "fix": ""
     },
     {
@@ -86,9 +86,9 @@
     {
       "id": "LLM-CODE",
       "category": "5. LLM 集成",
-      "name": "LLM 调用代码: 发现 7 处匹配",
+      "name": "LLM 调用代码: 发现 10 处匹配",
       "status": "通过",
-      "detail": "  - scripts\\check_assignment.py: 匹配 'chat/completions'\n  - scripts\\generate_ppt.py: 匹配 'deepseek'\n  - tests\\generate_test_report.py: 匹配 'llm'\n  - tests\\run_regression.py: 匹配 'llm'\n  - tests\\unit\\test_evaluation.py: 匹配 'llm'\n  - services\\requirements_agent\\app\\main.py: 匹配 'chat/completions'\n  - services\\evaluation_agent\\app\\main.py: 匹配 'chat/completions'",
+      "detail": "  - scripts\\check_assignment.py: 匹配 'chat/completions'\n  - scripts\\generate_ppt.py: 匹配 'deepseek'\n  - tests\\generate_test_report.py: 匹配 'llm'\n  - tests\\run_regression.py: 匹配 'llm'\n  - tests\\unit\\test_evaluation.py: 匹配 'llm'\n  - tests\\unit\\test_gateway.py: 匹配 'langchain'\n  - tests\\unit\\test_knowledge.py: 匹配 'llm'\n  - services\\requirements_agent\\app\\main.py: 匹配 'chat/completions'",
       "fix": ""
     },
     {
@@ -102,9 +102,9 @@
     {
       "id": "API-ROUTES",
       "category": "6. Web API",
-      "name": "API 路由: 发现 11 个端点",
+      "name": "API 路由: 发现 23 个端点",
       "status": "通过",
-      "detail": "  - services\\requirements_agent\\app\\main.py: GET /health\n  - services\\matching_agent\\app\\main.py: GET /health\n  - services\\knowledge_base\\app\\main.py: GET /health\n  - services\\knowledge_base\\app\\main.py: GET /styles\n  - services\\knowledge_base\\app\\main.py: POST /styles\n  - services\\knowledge_base\\app\\main.py: GET /feedback\n  - services\\knowledge_base\\app\\main.py: POST /feedback\n  - services\\knowledge_base\\app\\main.py: GET /feedback/stats\n  - services\\evaluation_agent\\app\\main.py: GET /health\n  - services\\evaluation_agent\\app\\main.py: POST /evaluate\n  - services\\api_gateway\\app\\main.py: GET /health",
+      "detail": "  - services\\requirements_agent\\app\\main.py: GET /health\n  - services\\refactoring_agent\\app\\main.py: GET /health\n  - services\\refactoring_agent\\app\\main.py: POST /refactor\n  - services\\matching_agent\\app\\main.py: GET /health\n  - services\\knowledge_base\\app\\main.py: GET /health\n  - services\\knowledge_base\\app\\main.py: GET /styles\n  - services\\knowledge_base\\app\\main.py: POST /styles\n  - services\\knowledge_base\\app\\main.py: GET /feedback\n  - services\\knowledge_base\\app\\main.py: POST /feedback\n  - services\\knowledge_base\\app\\main.py: GET /feedback/stats\n  - services\\knowledge_base\\app\\main.py: GET /feedback/weights\n  - services\\knowledge_base\\app\\main.py: GET /graph/status",
       "fix": ""
     },
     {
@@ -168,15 +168,191 @@
       "category": "8. 文档与答辩",
       "name": "文档: 答辩材料",
       "status": "通过",
-      "detail": "匹配文件: docs\\00-迭代完成记录与要求映射.md, docs\\01-需求规格说明书.md, docs\\03-系统测试报告.md, docs\\04-项目实施计划.md, docs\\05-严格对照检查报告.md",
+      "detail": "匹配文件: README.md, docs\\00-迭代完成记录与要求映射.md, docs\\01-需求规格说明书.md, docs\\04-项目实施计划.md, docs\\05-严格对照检查报告.md",
       "fix": ""
     },
     {
       "id": "DOC-COUNT",
       "category": "8. 文档与答辩",
-      "name": "文档总数 (md/pdf/docx): 21 份",
+      "name": "文档总数 (md/pdf/docx): 24 份",
       "status": "通过",
-      "detail": "找到 21 份文档文件",
+      "detail": "找到 24 份文档文件",
+      "fix": ""
+    },
+    {
+      "id": "NEO4J-DC",
+      "category": "9. Neo4j 图谱",
+      "name": "docker-compose.yml 中含 Neo4j 服务",
+      "status": "通过",
+      "detail": "已检测到 neo4j 容器定义",
+      "fix": ""
+    },
+    {
+      "id": "NEO4J-CODE",
+      "category": "9. Neo4j 图谱",
+      "name": "代码中含 neo4j Python Driver 引用",
+      "status": "通过",
+      "detail": "已在 Python 代码中检测到 neo4j 导入",
+      "fix": ""
+    },
+    {
+      "id": "NEO4J-REQ",
+      "category": "9. Neo4j 图谱",
+      "name": "requirements.txt 中含 neo4j 依赖",
+      "status": "通过",
+      "detail": "已检测到 neo4j 包依赖",
+      "fix": ""
+    },
+    {
+      "id": "NEO4J-INIT",
+      "category": "9. Neo4j 图谱",
+      "name": "存在 Neo4j 初始化脚本",
+      "status": "通过",
+      "detail": "已检测到 init_neo4j 脚本",
+      "fix": ""
+    },
+    {
+      "id": "NEO4J-FALLBACK",
+      "category": "9. Neo4j 图谱",
+      "name": "存在 JSON fallback 机制",
+      "status": "通过",
+      "detail": "已检测到 KNOWLEDGE_BACKEND 或 fallback 逻辑",
+      "fix": ""
+    },
+    {
+      "id": "LANG-REQ",
+      "category": "10. LangGraph 编排",
+      "name": "requirements.txt 中含 langgraph/langchain 依赖",
+      "status": "通过",
+      "detail": "已检测到 langgraph/langchain 包依赖",
+      "fix": ""
+    },
+    {
+      "id": "LANG-CODE",
+      "category": "10. LangGraph 编排",
+      "name": "代码中含 LangGraph/LangChain 引用",
+      "status": "通过",
+      "detail": "已检测到 LangGraph StateGraph 或 langchain 导入",
+      "fix": ""
+    },
+    {
+      "id": "LANG-FALLBACK",
+      "category": "10. LangGraph 编排",
+      "name": "存在手动编排 fallback",
+      "status": "通过",
+      "detail": "已检测到 manual fallback 逻辑",
+      "fix": ""
+    },
+    {
+      "id": "FEW-PROMPTS",
+      "category": "11. Few-shot Prompt",
+      "name": "存在 few-shot prompt 文件",
+      "status": "通过",
+      "detail": "需求: 有, 评估: 有",
+      "fix": ""
+    },
+    {
+      "id": "FEW-EXAMPLES",
+      "category": "11. Few-shot Prompt",
+      "name": "few-shot 文件中含足够示例",
+      "status": "通过",
+      "detail": "已检测到示例标记",
+      "fix": ""
+    },
+    {
+      "id": "FEW-INTEGRATION",
+      "category": "11. Few-shot Prompt",
+      "name": "Agent 代码中集成了 few-shot prompt",
+      "status": "通过",
+      "detail": "已在 Agent 主代码中检测到 few-shot 调用",
+      "fix": ""
+    },
+    {
+      "id": "CACHE-CODE",
+      "category": "12. LLM 缓存",
+      "name": "存在缓存模块代码",
+      "status": "通过",
+      "detail": "已检测到缓存实现",
+      "fix": ""
+    },
+    {
+      "id": "CACHE-API",
+      "category": "12. LLM 缓存",
+      "name": "存在 /cache/stats 接口",
+      "status": "通过",
+      "detail": "已检测到缓存管理端点",
+      "fix": ""
+    },
+    {
+      "id": "CACHE-HIT",
+      "category": "12. LLM 缓存",
+      "name": "响应中含 cache_hit 字段",
+      "status": "通过",
+      "detail": "已检测到 cache_hit 响应字段",
+      "fix": ""
+    },
+    {
+      "id": "ADR-CODE",
+      "category": "13. ADR 溯源",
+      "name": "存在 ADR 存储代码",
+      "status": "通过",
+      "detail": "已检测到 ADR 实现",
+      "fix": ""
+    },
+    {
+      "id": "ADR-API",
+      "category": "13. ADR 溯源",
+      "name": "存在 /adr 接口端点",
+      "status": "通过",
+      "detail": "已检测到 ADR API 端点",
+      "fix": ""
+    },
+    {
+      "id": "ADR-RESP",
+      "category": "13. ADR 溯源",
+      "name": "推荐响应中含 adr 字段",
+      "status": "通过",
+      "detail": "已检测到 adr_id/adr_status 响应字段",
+      "fix": ""
+    },
+    {
+      "id": "COMBO-DATA",
+      "category": "14. 组合推荐",
+      "name": "存在组合模式数据/代码",
+      "status": "通过",
+      "detail": "数据: 有, 代码: 有",
+      "fix": ""
+    },
+    {
+      "id": "COMBO-RESP",
+      "category": "14. 组合推荐",
+      "name": "响应中含 recommended_combination",
+      "status": "通过",
+      "detail": "已检测到组合推荐响应字段",
+      "fix": ""
+    },
+    {
+      "id": "REFAC-SVC",
+      "category": "15. 重构建议",
+      "name": "存在 refactoring-agent 微服务",
+      "status": "通过",
+      "detail": "已检测到 refactoring_agent/main.py",
+      "fix": ""
+    },
+    {
+      "id": "REFAC-DC",
+      "category": "15. 重构建议",
+      "name": "docker-compose.yml 中含 refactoring-agent",
+      "status": "通过",
+      "detail": "已在编排中检测到 refactoring-agent",
+      "fix": ""
+    },
+    {
+      "id": "REFAC-CODE",
+      "category": "15. 重构建议",
+      "name": "含重构检测和建议生成代码",
+      "status": "通过",
+      "detail": "已检测到重构建议逻辑",
       "fix": ""
     }
   ]

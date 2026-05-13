@@ -6,6 +6,9 @@ import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from .graph_matcher import fetch_graph_evidence, blend_scores
+from .combo_matcher import fetch_combinations, rank_combinations
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -13,7 +16,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("matching-agent")
 
-app = FastAPI(title="Matching Agent", version="0.1.0")
+app = FastAPI(title="Matching Agent", version="0.2.0")
 KNOWLEDGE_BASE_URL = os.getenv("KNOWLEDGE_BASE_URL", "http://localhost:8004")
 
 
@@ -23,6 +26,7 @@ class MatchRequest(BaseModel):
 
 class MatchResponse(BaseModel):
     candidates: List[Dict[str, Any]]
+    combination_candidates: List[Dict[str, Any]] = []
 
 
 MAINSTREAM_STYLES = [
@@ -107,7 +111,6 @@ async def match(payload: MatchRequest) -> MatchResponse:
             raise HTTPException(status_code=502, detail=f"Knowledge-base unavailable: {exc}") from exc
 
         # 知识进化：从 knowledge-base 拉取用户反馈积累的学习权重
-        # 权重结构: {feature: {style: count}} —— 用于 score_style 的 learned boost
         learned_weights = {}
         try:
             lw_resp = await client.get(f"{KNOWLEDGE_BASE_URL}/feedback/weights")
@@ -116,7 +119,13 @@ async def match(payload: MatchRequest) -> MatchResponse:
         except Exception:
             pass  # 权重服务不可用时降级——不影响核心规则评分链路
 
+    # ── 规则引擎评分 ──
     scored = [score_style(s, payload.features, learned_weights) for s in styles]
+
+    # ── 图谱关系推理评分 (可选, 不可用时静默降级) ──
+    graph_evidence = await fetch_graph_evidence(KNOWLEDGE_BASE_URL, payload.features)
+    scored = blend_scores(scored, graph_evidence)
+
     scored.sort(key=lambda x: x["score"], reverse=True)
 
     # Prefer mainstream styles in candidate set to satisfy course requirement.
@@ -141,4 +150,20 @@ async def match(payload: MatchRequest) -> MatchResponse:
                 if item["style"] not in {x["style"] for x in top3} and len(top3) < 3:
                     top3.append(item)
 
-    return MatchResponse(candidates=top3)
+    # ── 架构组合推荐 ──
+    combo_candidates: List[Dict[str, Any]] = []
+    try:
+        combos = await fetch_combinations(KNOWLEDGE_BASE_URL)
+        if combos:
+            combo_candidates = rank_combinations(
+                combos,
+                {item["style"]: item for item in scored},
+                payload.features,
+                graph_evidence,
+                top_n=3,
+            )
+            logger.info(f"Generated {len(combo_candidates)} combination candidates")
+    except Exception as e:
+        logger.warning(f"Combination matching failed (non-fatal): {e}")
+
+    return MatchResponse(candidates=top3, combination_candidates=combo_candidates)

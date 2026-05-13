@@ -1,0 +1,64 @@
+{
+  "combinations": [
+    {
+      "name": "Microservices + Event-Driven Architecture",
+      "name_zh": "微服务 + 事件驱动",
+      "styles": ["Microservices", "Event-Driven Architecture"],
+      "tags": ["high_concurrency", "scalability", "real_time", "team_size_large", "reliability"],
+      "best_for": ["high-scale distributed systems", "event-sourced platforms"],
+      "best_for_zh": ["高并发分布式系统", "事件溯源平台"],
+      "synergy": "Microservices handles service boundaries and independent deployment; Event-Driven decouples inter-service communication and handles async workflows.",
+      "synergy_zh": "微服务负责服务边界和独立部署；事件驱动解耦服务间通信并处理异步工作流。",
+      "complexity_penalty": 1,
+      "topology_mermaid": "graph LR\nA[API网关] --> B[用户服务]\nA --> C[订单服务]\nB --> D[(事件总线)]\nC --> D\nD --> E[通知服务]\nD --> F[审计服务]\nB --> G[(用户DB)]\nC --> H[(订单DB)]"
+    },
+    {
+      "name": "Layered Architecture + CQRS",
+      "name_zh": "分层架构 + CQRS",
+      "styles": ["Layered Architecture", "CQRS"],
+      "tags": ["complex_business", "strict_consistency", "scalability", "data_intensive"],
+      "best_for": ["enterprise apps with read/write imbalance", "audit-heavy systems"],
+      "best_for_zh": ["读写不均衡的企业应用", "审计密集型系统"],
+      "synergy": "Layered provides clear domain boundaries; CQRS splits read/write models to optimize query performance while keeping commands consistent.",
+      "synergy_zh": "分层架构提供清晰的领域边界；CQRS 分离读写模型，在保持命令一致性的同时优化查询性能。",
+      "complexity_penalty": 1,
+      "topology_mermaid": "graph LR\nA[表现层] --> B[应用层]\nB --> C[命令API]\nB --> D[查询API]\nC --> E[(写数据库)]\nD --> F[(读数据库)]\nE -.事件同步.-> F"
+    },
+    {
+      "name": "Pipeline-Filter + Event-Driven Architecture",
+      "name_zh": "管道-过滤器 + 事件驱动",
+      "styles": ["Pipeline-Filter", "Event-Driven Architecture"],
+      "tags": ["data_intensive", "real_time", "high_concurrency", "scalability"],
+      "best_for": ["stream processing", "log analytics platforms"],
+      "best_for_zh": ["流处理系统", "日志分析平台"],
+      "synergy": "Pipeline-Filter structures data processing stages; Event-Driven triggers pipeline stages asynchronously for high-throughput streaming.",
+      "synergy_zh": "管道-过滤器结构化数据处理阶段；事件驱动异步触发各阶段，实现高吞吐流处理。",
+      "complexity_penalty": 2,
+      "topology_mermaid": "graph LR\nA[数据源] --> B[(事件总线)]\nB --> C[过滤器:解析]\nC --> D[过滤器:验证]\nD --> E[过滤器:转换]\nE --> F[过滤器:聚合]\nF --> G[数据汇]"
+    },
+    {
+      "name": "Hexagonal Architecture + Microservices",
+      "name_zh": "六边形架构 + 微服务",
+      "styles": ["Hexagonal Architecture", "Microservices"],
+      "tags": ["complex_business", "team_size_large", "scalability", "reliability"],
+      "best_for": ["domain-driven microservices", "high-testability distributed systems"],
+      "best_for_zh": ["领域驱动的微服务", "高可测试性分布式系统"],
+      "synergy": "Hexagonal ensures clean port-adapter separation within each service; Microservices manages cross-service boundaries and independent deployment.",
+      "synergy_zh": "六边形架构确保每个服务内部端口-适配器清晰分离；微服务管理跨服务边界和独立部署。",
+      "complexity_penalty": 2,
+      "topology_mermaid": "graph LR\nA[Web适配器] --> B[端口]\nB --> C[领域核心]\nC --> D[数据库端口]\nD --> E[(服务DB)]\nF[消息适配器] --> B\nG[API网关] -.路由.-> A"
+    },
+    {
+      "name": "CQRS + Event Sourcing",
+      "name_zh": "CQRS + 事件溯源",
+      "styles": ["CQRS", "Event-Driven Architecture"],
+      "tags": ["strict_consistency", "data_intensive", "high_concurrency", "security"],
+      "best_for": ["audit-complete financial systems", "event-replayable platforms"],
+      "best_for_zh": ["完整审计的金融系统", "事件可回放平台"],
+      "synergy": "CQRS separates command and query models; Event Sourcing records all state changes as events, enabling full audit trail and temporal queries.",
+      "synergy_zh": "CQRS 分离命令与查询模型；事件溯源将所有状态变更记录为事件，实现完整审计追踪和时间旅行查询。",
+      "complexity_penalty": 3,
+      "topology_mermaid": "graph LR\nA[客户端] --> B[命令API]\nA --> C[查询API]\nB --> D[(事件存储)]\nD --> E[事件处理器]\nE --> F[(读模型)]\nC --> F\nD -.重放.-> E"
+    }
+  ]
+}

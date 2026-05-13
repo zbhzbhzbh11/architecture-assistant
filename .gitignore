@@ -11,3 +11,4 @@ learned_weights.json
 *.egg-info/
 dist/
 build/
+adr_records.json

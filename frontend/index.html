@@ -11,37 +11,61 @@
 <body>
   <main class="wrap">
     <h1>架构风格智能助手</h1>
-    <p class="desc">输入需求描述，输出候选架构、最终推荐与对比矩阵。</p>
+    <p class="desc">LLM + 知识图谱双驱动 &nbsp;|&nbsp; LangGraph 微服务编排 &nbsp;|&nbsp; 组合架构推荐</p>
 
-    <textarea id="requirement" rows="7" placeholder="例如：开发一个跨平台即时通讯系统，支持万人同时在线，消息实时可靠，后续扩展视频通话。"></textarea>
+    <textarea id="requirement" rows="6" placeholder="例如：开发跨平台即时通讯系统，支持万人同时在线，消息实时可靠，后续扩展视频通话。"></textarea>
     <button id="submit">开始推荐</button>
 
     <section id="result" class="hidden">
+      <!-- 1. 推荐摘要 -->
       <h2>推荐结果</h2>
       <div id="summary" class="summary"></div>
 
+      <!-- 2. 状态栏: workflow engine + 缓存 -->
+      <div class="status-bar">
+        <div id="cache-status"></div>
+        <div id="workflow-status"></div>
+      </div>
+
+      <!-- 3. 识别特征 -->
+      <h3>识别特征</h3>
       <div id="features-card" class="features-card"></div>
 
+      <!-- 4. 工作流追踪 -->
+      <h3>工作流追踪</h3>
+      <div id="workflow-trace" class="workflow-trace"></div>
+
+      <!-- 5. 架构对比矩阵 -->
       <h3>架构对比矩阵</h3>
       <table id="matrix">
-        <thead>
-          <tr>
-            <th>推荐</th>
-            <th>架构风格</th>
-            <th>得分</th>
-            <th>关键理由</th>
-            <th>优点</th>
-            <th>缺点</th>
-          </tr>
-        </thead>
+        <thead><tr><th>推荐</th><th>架构风格</th><th>得分</th><th>关键理由</th><th>优点</th><th>缺点</th></tr></thead>
         <tbody></tbody>
       </table>
 
+      <!-- 6. 推荐拓扑图 -->
       <h3>推荐拓扑图</h3>
       <div id="topology"></div>
 
-      <h3>原始响应</h3>
+      <!-- 7. 知识图谱证据 -->
+      <h3>知识图谱证据</h3>
+      <div id="graph-evidence" class="graph-evidence"></div>
+
+      <!-- 8. 组合架构推荐 -->
+      <h3>组合架构推荐</h3>
+      <div id="combo-section" class="combo-section"></div>
+
+      <!-- 9. 架构重构建议 -->
+      <h3>架构重构建议</h3>
+      <div id="refactor-section" class="refactor-section"></div>
+
+      <!-- 10. ADR 决策溯源 -->
+      <h3>架构决策记录 (ADR)</h3>
+      <div id="adr-info" class="adr-info"></div>
+
+      <!-- 11. 原始响应 -->
+      <details><summary>原始响应 JSON</summary>
       <pre id="output"></pre>
+      </details>
     </section>
   </main>
 
@@ -49,46 +73,153 @@
     mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
     marked.setOptions({ breaks: true, gfm: true });
 
-    const btn = document.getElementById('submit');
-    const input = document.getElementById('requirement');
-    const output = document.getElementById('output');
-    const result = document.getElementById('result');
-    const summary = document.getElementById('summary');
-    const matrixBody = document.querySelector('#matrix tbody');
-    const topology = document.getElementById('topology');
+    const $ = (id) => document.getElementById(id);
+    const btn = $('submit'), input = $('requirement'), output = $('output'),
+          result = $('result'), summary = $('summary'),
+          matrixBody = document.querySelector('#matrix tbody'),
+          topology = $('topology');
+
+    function safe(v, fallback) { return (v !== undefined && v !== null) ? v : fallback; }
+    function safeStr(v, fb) { return (typeof v === 'string' && v) ? v : (fb || ''); }
+    function safeArr(v) { return Array.isArray(v) ? v : []; }
+
+    const FEAT_LABELS = {
+      high_concurrency:'高并发',real_time:'实时性',reliability:'可靠性',scalability:'可扩展性',
+      complex_business:'复杂业务',strict_consistency:'强一致性',deployment_constraint:'部署约束',
+      data_intensive:'数据密集型',team_size_large:'多团队',security:'安全性'
+    };
 
     function buildTopology(matrixRows, recommendedStyle) {
       if (matrixRows && matrixRows.length) {
-        const matched = matrixRows.find(r => r.style === recommendedStyle);
-        if (matched && matched.topology_mermaid) {
-          return matched.topology_mermaid;
-        }
+        const m = matrixRows.find(r => r.style === recommendedStyle);
+        if (m && m.topology_mermaid) return m.topology_mermaid;
       }
-      return `graph LR\nA[客户端] --> B[API 网关]\nB --> C[业务逻辑]\nC --> D[(数据库)]`;
+      return 'graph LR\nA[客户端] --> B[API 网关]\nB --> C[业务逻辑]\nC --> D[(数据库)]';
     }
 
     function renderMatrix(rows) {
       matrixBody.innerHTML = '';
-      rows.forEach((row) => {
-        const styleName = row.style_zh || row.style || '-';
-        const prosList = (row.pros_zh && row.pros_zh.length ? row.pros_zh : row.pros) || [];
-        const consList = (row.cons_zh && row.cons_zh.length ? row.cons_zh : row.cons) || [];
+      rows.forEach(row => {
         const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td style="font-weight:600">${row.recommendation_type || '-'}</td>
-          <td>${styleName}</td>
-          <td>${row.score ?? '-'}</td>
-          <td>${(row.key_reasons || []).join('; ') || '-'}</td>
-          <td>${prosList.join('; ') || '-'}</td>
-          <td>${consList.join('; ') || '-'}</td>
-        `;
+        tr.innerHTML = [
+          '<td style="font-weight:600">' + safeStr(row.recommendation_type, '-') + '</td>',
+          '<td>' + safeStr(row.style_zh, row.style || '-') + '</td>',
+          '<td>' + safe(row.score, '-') + '</td>',
+          '<td>' + (safeArr(row.key_reasons).join('; ') || '-') + '</td>',
+          '<td>' + (safeArr(row.pros_zh).length ? safeArr(row.pros_zh).join('; ') : safeArr(row.pros).join('; ') || '-') + '</td>',
+          '<td>' + (safeArr(row.cons_zh).length ? safeArr(row.cons_zh).join('; ') : safeArr(row.cons).join('; ') || '-') + '</td>',
+        ].join('');
         matrixBody.appendChild(tr);
       });
     }
 
+    function renderFeatures(feats, featHits) {
+      const div = $('features-card');
+      const active = Object.entries(feats || {}).filter(([,v]) => v);
+      if (!active.length) { div.innerHTML = '<span class="feat-tag dim">未识别到明显特征</span>'; return; }
+      div.innerHTML = active.map(([k]) => {
+        const hits = safeArr(featHits && featHits[k]).join(' / ');
+        return '<span class="feat-tag">' + (FEAT_LABELS[k] || k) + (hits ? ' <small>(' + hits + ')</small>' : '') + '</span>';
+      }).join(' ');
+    }
+
+    function renderWorkflowTrace(data) {
+      const div = $('workflow-trace');
+      const trace = safeArr(data?.workflow_trace);
+      const engine = safeStr(data?.workflow_engine, 'manual');
+      $('workflow-status').innerHTML = '<span class="cache-badge">编排引擎: ' + engine + '</span>';
+
+      if (!trace.length) { div.innerHTML = '<span class="dim-text">无追踪数据</span>'; return; }
+      const total = trace.reduce((s, t) => s + safe(t.elapsed_ms, 0), 0);
+      let html = '<div class="trace-bar">';
+      trace.forEach(t => {
+        const pct = total > 0 ? Math.round(safe(t.elapsed_ms, 0) / total * 100) : 33;
+        const color = t.status === 'error' ? '#ef4444' : '#0d9488';
+        html += '<div class="trace-step" style="flex:' + Math.max(pct, 15) + '">';
+        html += '<div class="trace-name">' + safeStr(t.node, '?') + '</div>';
+        html += '<div class="trace-bar-inner" style="width:100%;height:6px;background:' + color + ';border-radius:3px"></div>';
+        html += '<div class="trace-ms">' + safe(t.elapsed_ms, 0) + 'ms</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+      div.innerHTML = html;
+    }
+
+    function renderGraphEvidence(data) {
+      const div = $('graph-evidence');
+      const cands = safeArr(data?.candidates);
+      const best = cands.find(c => safeArr(c.matched_attributes).length || safeArr(c.graph_reasons).length);
+      if (!best) { div.innerHTML = '<span class="dim-text">无图谱证据</span>'; return; }
+
+      let html = '<div class="graph-card">';
+      const attrs = safeArr(best.matched_attributes);
+      const scenarios = safeArr(best.matched_scenarios);
+      const reasons = safeArr(best.graph_reasons);
+      const risks = safeArr(best.related_risks);
+      const combos = safeArr(best.combinable_styles);
+
+      if (attrs.length) html += '<div class="graph-row"><b>匹配属性:</b> ' + attrs.map(a => '<span class="feat-tag small">' + (FEAT_LABELS[a] || a) + '</span>').join(' ') + '</div>';
+      if (scenarios.length) html += '<div class="graph-row"><b>适用场景:</b> ' + scenarios.join('、') + '</div>';
+      if (risks.length) html += '<div class="graph-row"><b>关联风险:</b> ' + risks.slice(0, 2).join('；') + '</div>';
+      if (combos.length) html += '<div class="graph-row"><b>可组合:</b> ' + combos.join('、') + '</div>';
+      if (best.graph_score) html += '<div class="graph-row"><b>图谱得分:</b> +' + best.graph_score + '</div>';
+      html += '</div>';
+      div.innerHTML = html;
+    }
+
+    function renderCombo(data) {
+      const div = $('combo-section');
+      const combo = data?.final_report?.recommended_combination;
+      const cands = safeArr(data?.final_report?.combination_candidates);
+      if (!combo || !combo.name) { div.innerHTML = '<span class="dim-text">未生成组合推荐</span>'; return; }
+
+      const comps = safeArr(combo.components).map(c => c.style_zh || c.style).join(' + ');
+      let html = '<div class="combo-card">';
+      html += '<span class="combo-badge">推荐组合</span> <strong>' + safeStr(combo.name_zh, combo.name) + '</strong>';
+      html += '<div class="combo-detail">组成: ' + comps + '</div>';
+      html += '<div class="combo-detail">' + safeStr(combo.synergy_zh, '') + '</div>';
+      if (combo.complexity_penalty) html += '<div class="combo-detail risk-text">复杂度风险: ' + combo.complexity_penalty + ' 级</div>';
+      html += '</div>';
+      if (cands.length > 1) {
+        html += '<div class="alt-text">备选: ' + cands.slice(1).map(c => c.combination_name_zh || c.combination_name).join('、') + '</div>';
+      }
+      div.innerHTML = html;
+    }
+
+    function renderRefactoring(data) {
+      const div = $('refactor-section');
+      const ref = data?.final_report?.refactoring_advice;
+      if (!ref || Object.keys(ref).length === 0) { div.innerHTML = ''; return; }
+      if (!ref.refactoring_needed) { div.innerHTML = '<span class="cache-badge hit">✓ 当前架构无明显重构需求</span>'; return; }
+
+      let html = '<div class="refactor-card">';
+      html += '<span class="combo-badge danger">需重构</span> <strong>目标: ' + safeStr(ref.target_architecture_zh, ref.target_architecture || '-') + '</strong>';
+
+      const smells = safeArr(ref.detected_architecture_smells);
+      if (smells.length) html += '<div class="combo-detail">检测坏味: ' + smells.map(s => s.name_zh).join('、') + '</div>';
+
+      const patterns = safeArr(ref.suggested_patterns);
+      if (patterns.length) html += '<div class="combo-detail">建议模式: ' + patterns.map(p => p.name_zh).join('、') + '</div>';
+
+      const steps = safeArr(ref.migration_steps);
+      if (steps.length) {
+        html += '<details style="margin-top:4px"><summary>迁移步骤 (' + steps.length + ' 步)</summary><ol class="step-list">';
+        steps.forEach(s => { html += '<li>' + s + '</li>'; });
+        html += '</ol></details>';
+      }
+
+      const risks = safeArr(ref.risks);
+      if (risks.length) html += '<div class="combo-detail risk-text">风险: ' + risks.slice(0, 2).join('；') + '</div>';
+
+      const mitigations = safeArr(ref.mitigation_suggestions);
+      if (mitigations.length) html += '<div class="combo-detail">缓解: ' + mitigations.slice(0, 2).join('；') + '</div>';
+
+      html += '</div>';
+      div.innerHTML = html;
+    }
+
     btn.addEventListener('click', async () => {
-      btn.disabled = true;
-      btn.innerText = '分析中...';
+      btn.disabled = true; btn.innerText = '分析中...';
       try {
         const resp = await fetch('http://localhost:8000/api/v1/recommend', {
           method: 'POST',
@@ -96,57 +227,60 @@
           body: JSON.stringify({ requirement: input.value })
         });
         const data = await resp.json();
+        const fr = data?.final_report || {};
 
-        const recommendedZh = data?.final_report?.recommended_style_zh || data?.final_report?.recommended_style || '未知';
-        const alternatives = data?.final_report?.alternative_styles_zh || data?.final_report?.alternative_styles || [];
-        const llmSummary = data?.final_report?.decision_basis?.llm_summary || '';
-        const altText = alternatives.length ? `（备选：${alternatives.join('、')}）` : '';
+        // 摘要
+        const recZh = safeStr(fr.recommended_style_zh, fr.recommended_style || '未知');
+        const alts = safeArr(fr.alternative_styles_zh).length ? safeArr(fr.alternative_styles_zh) : safeArr(fr.alternative_styles);
+        const altText = alts.length ? '（备选：' + alts.join('、') + '）' : '';
+        summary.innerHTML = '<strong>核心推荐：</strong>' + recZh + ' ' + altText +
+          '<div class="llm-report">' + marked.parse(safeStr(fr.decision_basis?.llm_summary, '')) + '</div>';
 
-        summary.innerHTML = `
-          <strong>核心推荐：</strong>${recommendedZh} ${altText}
-          <div class="llm-report">${marked.parse(llmSummary)}</div>
-        `;
+        // 矩阵
+        renderMatrix(safeArr(fr.comparison_matrix));
 
-        const matrix = data?.final_report?.comparison_matrix || [];
-        renderMatrix(matrix);
-
+        // 拓扑
         result.classList.remove('hidden');
-        const topoDef = buildTopology(matrix, data?.final_report?.recommended_style);
+        const topoDef = buildTopology(safeArr(fr.comparison_matrix), fr.recommended_style);
         try {
           const { svg } = await mermaid.render('topology-svg', topoDef);
           topology.innerHTML = svg;
-        } catch (err) {
-          topology.innerHTML = `<pre style="color:#999;font-size:13px;">${topoDef}</pre>`;
-        }
+        } catch (e) { topology.innerHTML = '<pre class="code-sm">' + topoDef + '</pre>'; }
 
-        const feats = data?.extracted_features || {};
-        const featHits = data?.feature_hits || {};
-        const activeFeats = Object.entries(feats)
-          .filter(([_, v]) => v)
-          .map(([k]) => {
-            const labels = {
-              high_concurrency: '高并发', real_time: '实时性', reliability: '可靠性',
-              scalability: '可扩展性', complex_business: '复杂业务', strict_consistency: '强一致性',
-              deployment_constraint: '部署约束', data_intensive: '数据密集型',
-              team_size_large: '多团队', security: '安全性'
-            };
-            const hits = (featHits[k] || []).join(' / ');
-            return `<span class="feat-tag">${labels[k] || k} <small>(${hits})</small></span>`;
-          });
-        const featDiv = document.getElementById('features-card');
-        if (featDiv) {
-          featDiv.innerHTML = activeFeats.length
-            ? '<strong>识别特征：</strong>' + activeFeats.join(' ')
-            : '<span class="feat-tag dim">未识别到明显特征</span>';
-        }
+        // 特征
+        renderFeatures(data?.extracted_features, data?.feature_hits);
+
+        // 追踪
+        renderWorkflowTrace(data);
+
+        // 图谱证据
+        renderGraphEvidence(data);
+
+        // 组合
+        renderCombo(data);
+
+        // 重构
+        renderRefactoring(data);
+
+        // 缓存
+        const cacheDiv = $('cache-status');
+        cacheDiv.innerHTML = data?.cache_hit
+          ? '<span class="cache-badge hit">⚡ 缓存命中</span>'
+          : '<span class="cache-badge miss">🔄 实时计算</span>';
+
+        // ADR
+        const adr = fr.adr;
+        const adrDiv = $('adr-info');
+        if (adr && adr.adr_id) {
+          adrDiv.innerHTML = '<span class="cache-badge hit">✓ 已记录</span> <strong>' + adr.adr_id + '</strong>' +
+            ' <a href="#" onclick="alert(\'ADR ID: ' + adr.adr_id + '\\n可通过 GET /adr/' + adr.adr_id + ' 查看完整决策记录\');return false;">查看决策溯源</a>';
+        } else { adrDiv.innerHTML = '<span class="dim-text">未生成 ADR</span>'; }
 
         output.textContent = JSON.stringify(data, null, 2);
       } catch (e) {
-        output.textContent = '请求失败：' + e;
-        result.classList.remove('hidden');
+        output.textContent = '请求失败：' + e; result.classList.remove('hidden');
       } finally {
-        btn.disabled = false;
-        btn.innerText = '开始推荐';
+        btn.disabled = false; btn.innerText = '开始推荐';
       }
     });
   </script>

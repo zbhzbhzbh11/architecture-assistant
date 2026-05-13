@@ -110,7 +110,8 @@ def test_match_candidates_count():
         "reliability": True, "scalability": True,
     }
 
-    with patch("httpx.AsyncClient") as mock_client:
+    with patch("httpx.AsyncClient") as mock_client, \
+         patch("services.matching_agent.app.main.fetch_graph_evidence", new=AsyncMock(return_value=None)):
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
         mock_resp.json.return_value = kb_data
@@ -132,7 +133,8 @@ def test_match_contains_mainstream():
     kb_data = load_styles()
     features = {"high_concurrency": True, "real_time": True}
 
-    with patch("httpx.AsyncClient") as mock_client:
+    with patch("httpx.AsyncClient") as mock_client, \
+         patch("services.matching_agent.app.main.fetch_graph_evidence", new=AsyncMock(return_value=None)):
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
         mock_resp.json.return_value = kb_data
@@ -293,3 +295,151 @@ def test_dynamic_risks_unknown_style():
     risks = _dynamic_risks("Unknown Style XYZ", [])
     assert len(risks["main_risks"]) > 0
     assert len(risks["suggestions"]) > 0
+
+
+# ── Few-shot Prompt 测试 ──────────────────────────────────────
+
+def test_eval_few_shot_contains_three_examples():
+    """evaluation few-shot 模块应包含 3 个参考示例."""
+    import sys
+    from pathlib import Path
+    _services_root = Path(__file__).resolve().parent.parent.parent / "services"
+    if str(_services_root) not in sys.path:
+        sys.path.insert(0, str(_services_root))
+    from common.prompts.evaluation_few_shot import EXAMPLES
+    assert len(EXAMPLES) == 3
+
+
+def test_eval_few_shot_prompt_includes_reference():
+    """evaluation few-shot prompt 应包含参考示例标记."""
+    import sys
+    from pathlib import Path
+    _services_root = Path(__file__).resolve().parent.parent.parent / "services"
+    if str(_services_root) not in sys.path:
+        sys.path.insert(0, str(_services_root))
+    from common.prompts.evaluation_few_shot import build_few_shot_prompt
+
+    prompt = build_few_shot_prompt(
+        requirement="测试需求",
+        best_style="Layered Architecture",
+        alt_styles="Microservices",
+        candidates_json='[{"style":"Layered"}]',
+    )
+    assert "参考示例" in prompt
+    assert "测试需求" in prompt
+    assert "Layered Architecture" in prompt
+    assert "优点" in prompt
+    assert "缺点" in prompt
+    assert "风险" in prompt
+    assert "建议" in prompt
+
+
+def test_eval_few_shot_covers_all_scenarios():
+    """3 个示例应覆盖 Event-Driven, Microservices, Layered."""
+    import sys
+    from pathlib import Path
+    _services_root = Path(__file__).resolve().parent.parent.parent / "services"
+    if str(_services_root) not in sys.path:
+        sys.path.insert(0, str(_services_root))
+    from common.prompts.evaluation_few_shot import EXAMPLES
+
+    styles = {ex["core_style"] for ex in EXAMPLES}
+    assert any("Event-Driven" in s for s in styles)
+    assert any("Microservices" in s for s in styles)
+    assert any("Layered" in s for s in styles)
+
+
+def test_eval_few_shot_prompt_sections():
+    """evaluation few-shot prompt 应包含完整输出结构: 推荐/理由/优缺点/风险建议."""
+    import sys
+    from pathlib import Path
+    _services_root = Path(__file__).resolve().parent.parent.parent / "services"
+    if str(_services_root) not in sys.path:
+        sys.path.insert(0, str(_services_root))
+    from common.prompts.evaluation_few_shot import build_few_shot_prompt
+
+    prompt = build_few_shot_prompt(
+        requirement="构建一个实时数据处理平台",
+        best_style="Event-Driven Architecture",
+        alt_styles="Pipeline-Filter",
+        candidates_json="[]",
+    )
+    assert "推荐架构" in prompt
+    assert "推荐理由" in prompt
+    assert "优缺点分析" in prompt
+    assert "风险与建议" in prompt
+
+
+# ── ADR 字段测试 ──────────────────────────────────────────────
+
+def test_evaluate_includes_adr_field():
+    """evaluate 结果应包含 adr 字段 (即使 ADR 写入失败也有占位)."""
+    import asyncio
+    from services.evaluation_agent.app.main import evaluate, EvaluateRequest
+    from services.knowledge_base.app.main import load_styles
+    from services.matching_agent.app.main import score_style
+
+    kb_data = load_styles()
+    features = {"high_concurrency": True, "real_time": True}
+
+    scored = [score_style(s, features) for s in kb_data["styles"]]
+    scored.sort(key=lambda x: x["score"], reverse=True)
+    candidates = scored[:3]
+
+    with patch("httpx.AsyncClient") as mock_client:
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.json.return_value = {
+            "choices": [{"message": {"content": "推荐采用事件驱动架构..."}}]
+        }
+        mock_instance = AsyncMock()
+        mock_instance.__aenter__.return_value.post.return_value = mock_resp
+        # GET for ADR call will also use this mock (default 200)
+        mock_instance.__aenter__.return_value.get.return_value = mock_resp
+        mock_client.return_value = mock_instance
+
+        eval_result = asyncio.run(evaluate(EvaluateRequest(
+            requirement=REQUIREMENT_TEXT,
+            features=features,
+            candidates=candidates,
+        )))
+
+    assert "adr" in eval_result, "evaluate 结果应包含 adr 字段"
+    assert "adr_id" in eval_result["adr"] or eval_result["adr"].get("adr_id") is None
+    assert "adr_status" in eval_result["adr"]
+    assert eval_result["adr"]["adr_status"] in ("ok", "failed", "not_generated")
+
+
+def test_evaluate_includes_recommended_combination():
+    """evaluate 结果应包含 recommended_combination (空或非空)."""
+    import asyncio
+    from services.evaluation_agent.app.main import evaluate, EvaluateRequest
+    from services.knowledge_base.app.main import load_styles
+    from services.matching_agent.app.main import score_style
+
+    kb_data = load_styles()
+    features = {"high_concurrency": True, "real_time": True}
+
+    scored = [score_style(s, features) for s in kb_data["styles"]]
+    scored.sort(key=lambda x: x["score"], reverse=True)
+    candidates = scored[:3]
+
+    with patch("httpx.AsyncClient") as mock_client:
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.json.return_value = {
+            "choices": [{"message": {"content": "推荐采用事件驱动架构..."}}]
+        }
+        mock_instance = AsyncMock()
+        mock_instance.__aenter__.return_value.post.return_value = mock_resp
+        mock_instance.__aenter__.return_value.get.return_value = mock_resp
+        mock_client.return_value = mock_instance
+
+        eval_result = asyncio.run(evaluate(EvaluateRequest(
+            requirement=REQUIREMENT_TEXT,
+            features=features,
+            candidates=candidates,
+        )))
+
+    assert "recommended_combination" in eval_result
+    assert "combination_candidates" in eval_result

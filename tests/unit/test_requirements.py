@@ -1,5 +1,14 @@
 import asyncio
+import sys
+from pathlib import Path
+
 import pytest
+
+# 确保 services/ 在 sys.path 中 (本地开发)
+_SERVICES_ROOT = Path(__file__).resolve().parent.parent.parent / "services"
+if str(_SERVICES_ROOT) not in sys.path:
+    sys.path.insert(0, str(_SERVICES_ROOT))
+
 from services.requirements_agent.app.main import extract, ExtractRequest
 
 
@@ -37,3 +46,41 @@ def test_extract_negation():
 
     assert result.features["high_concurrency"] is False, f"否定语义应过滤高并发: {result.feature_hits['high_concurrency']}"
     assert result.features["real_time"] is False
+
+
+# ── Few-shot Prompt 测试 ──────────────────────────────────────
+
+def test_few_shot_prompt_contains_examples():
+    """few-shot prompt 应包含 6 个示例的关键词."""
+    from common.prompts.requirements_few_shot import build_few_shot_prompt
+    prompt = build_few_shot_prompt("系统需要处理大量并发请求")
+
+    assert "示例1" in prompt
+    assert "示例6" in prompt
+    assert "双十一" in prompt or "TB" in prompt or "ACID" in prompt  # 示例中的领域术语
+    assert "高并发" in prompt
+    assert "安全" in prompt or "医疗数据" in prompt
+
+
+def test_few_shot_prompt_includes_requirement():
+    """few-shot prompt 末尾应包含用户需求."""
+    from common.prompts.requirements_few_shot import build_few_shot_prompt
+    user_req = "一个银行对账系统需要高可靠和强一致"
+    prompt = build_few_shot_prompt(user_req)
+
+    assert user_req in prompt
+    assert "JSON" in prompt
+
+
+def test_few_shot_prompt_json_constraint():
+    """few-shot prompt 应保留 JSON-only 输出约束."""
+    from common.prompts.requirements_few_shot import build_few_shot_prompt
+    prompt = build_few_shot_prompt("测试需求")
+    assert "JSON" in prompt
+    assert "不要输出其他内容" in prompt
+
+
+def test_few_shot_has_six_examples():
+    """验证 few-shot 模块恰含 6 个示例."""
+    from common.prompts.requirements_few_shot import EXAMPLES
+    assert len(EXAMPLES) == 6

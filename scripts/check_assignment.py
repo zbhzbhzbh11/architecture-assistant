@@ -644,6 +644,347 @@ def check_visualization(root: Path) -> List[CheckResult]:
     return results
 
 
+def check_neo4j_integration(root: Path) -> List[CheckResult]:
+    """检查 9: Neo4j 知识图谱存储."""
+    results = []
+    dc_file = root / "docker-compose.yml"
+    dc_content = _read_file(dc_file) if dc_file.exists() else ""
+
+    neo4j_in_dc = "neo4j" in dc_content.lower() and "image:" in dc_content.lower()
+    results.append(CheckResult(
+        "NEO4J-DC", "Neo4j 图谱存储",
+        "docker-compose.yml 中含 Neo4j 服务",
+        "通过" if neo4j_in_dc else "失败",
+        f"{'已' if neo4j_in_dc else '未'}检测到 neo4j 容器定义",
+        "" if neo4j_in_dc else "请在 docker-compose.yml 中添加 neo4j 服务",
+    ))
+
+    neo4j_driver_ref = any(
+        _grep_in_file(f, r"from neo4j|import neo4j|GraphDatabase\.driver")
+        for f in root.rglob("*.py") if "__pycache__" not in str(f)
+    )
+    results.append(CheckResult(
+        "NEO4J-CODE", "Neo4j 图谱存储",
+        "代码中含 neo4j Python Driver 引用",
+        "通过" if neo4j_driver_ref else "警告",
+        f"{'已' if neo4j_driver_ref else '未'}在 Python 代码中检测到 neo4j 导入",
+    ))
+
+    neo4j_in_req = any(
+        "neo4j" in _read_file(f).lower()
+        for f in _find_files(root, ["requirements*.txt"])
+    )
+    results.append(CheckResult(
+        "NEO4J-REQ", "Neo4j 图谱存储",
+        "requirements.txt 中含 neo4j 依赖",
+        "通过" if neo4j_in_req else "警告",
+        f"{'已' if neo4j_in_req else '未'}检测到 neo4j 包依赖",
+    ))
+
+    has_init_script = any(
+        "init_neo4j" in f.name.lower()
+        for f in root.rglob("*.py")
+    )
+    results.append(CheckResult(
+        "NEO4J-INIT", "Neo4j 图谱存储",
+        "存在 Neo4j 初始化脚本",
+        "通过" if has_init_script else "警告",
+        f"{'已' if has_init_script else '未'}检测到 init_neo4j 脚本",
+    ))
+
+    has_json_fallback = any(
+        _grep_in_file(f, r"json.*fallback|fallback.*json|KNOWLEDGE_BACKEND")
+        for f in root.rglob("*.py") if "__pycache__" not in str(f)
+    )
+    results.append(CheckResult(
+        "NEO4J-FALLBACK", "Neo4j 图谱存储",
+        "存在 JSON fallback 机制",
+        "通过" if has_json_fallback else "警告",
+        f"{'已' if has_json_fallback else '未'}检测到 KNOWLEDGE_BACKEND 或 fallback 逻辑",
+    ))
+
+    return results
+
+
+def check_langgraph_integration(root: Path) -> List[CheckResult]:
+    """检查 10: LangChain/LangGraph Agent 协作."""
+    results = []
+
+    langgraph_req = any(
+        "langgraph" in _read_file(f).lower() or "langchain" in _read_file(f).lower()
+        for f in _find_files(root, ["requirements*.txt"])
+    )
+    results.append(CheckResult(
+        "LANG-REQ", "LangGraph 编排",
+        "requirements.txt 中含 langgraph/langchain 依赖",
+        "通过" if langgraph_req else "警告",
+        f"{'已' if langgraph_req else '未'}检测到 langgraph/langchain 包依赖",
+    ))
+
+    langgraph_code = any(
+        _grep_in_file(f, r"from langgraph|import langgraph|StateGraph|langchain")
+        for f in root.rglob("*.py") if "__pycache__" not in str(f)
+    )
+    results.append(CheckResult(
+        "LANG-CODE", "LangGraph 编排",
+        "代码中含 LangGraph/LangChain 引用",
+        "通过" if langgraph_code else "警告",
+        f"{'已' if langgraph_code else '未'}检测到 LangGraph StateGraph 或 langchain 导入",
+    ))
+
+    has_manual_fallback = any(
+        _grep_in_file(f, r"manual.*fallback|_manual_orchestrate|build_workflow.*None")
+        for f in root.rglob("*.py") if "__pycache__" not in str(f)
+    )
+    results.append(CheckResult(
+        "LANG-FALLBACK", "LangGraph 编排",
+        "存在手动编排 fallback",
+        "通过" if has_manual_fallback else "警告",
+        f"{'已' if has_manual_fallback else '未'}检测到 manual fallback 逻辑",
+    ))
+
+    return results
+
+
+def check_few_shot_prompts(root: Path) -> List[CheckResult]:
+    """检查 11: Few-shot Prompt Engineering."""
+    results = []
+
+    has_req_few_shot = bool(list(root.rglob("requirements_few_shot.py")))
+    has_eval_few_shot = bool(list(root.rglob("evaluation_few_shot.py")))
+    has_few_shot = has_req_few_shot or has_eval_few_shot
+
+    results.append(CheckResult(
+        "FEW-PROMPTS", "Few-shot Prompt",
+        "存在 few-shot prompt 文件",
+        "通过" if has_few_shot else "失败",
+        f"需求: {'有' if has_req_few_shot else '无'}, 评估: {'有' if has_eval_few_shot else '无'}",
+        "" if has_few_shot else "请创建 services/common/prompts/ 下的 few-shot 文件",
+    ))
+
+    # 检查 prompt 中是否含示例
+    few_shot_examples = any(
+        _grep_in_file(f, r"示例\d|EXAMPLE|few.shot|build_few_shot_prompt")
+        for f in root.rglob("*.py") if "few_shot" in str(f).lower()
+    )
+    results.append(CheckResult(
+        "FEW-EXAMPLES", "Few-shot Prompt",
+        "few-shot 文件中含足够示例",
+        "通过" if few_shot_examples else "警告",
+        f"{'已' if few_shot_examples else '未'}检测到示例标记",
+    ))
+
+    # 检查 requirements 和 evaluation agent 是否引用 few-shot
+    uses_few_shot = any(
+        _grep_in_file(f, r"few_shot|build_few_shot_prompt")
+        for f in root.rglob("*.py")
+        if "main.py" in str(f) and ("requirements" in str(f) or "evaluation" in str(f))
+        and "__pycache__" not in str(f)
+    )
+    results.append(CheckResult(
+        "FEW-INTEGRATION", "Few-shot Prompt",
+        "Agent 代码中集成了 few-shot prompt",
+        "通过" if uses_few_shot else "警告",
+        f"{'已' if uses_few_shot else '未'}在 Agent 主代码中检测到 few-shot 调用",
+    ))
+
+    return results
+
+
+def check_cache_module(root: Path) -> List[CheckResult]:
+    """检查 12: LLM 结果缓存."""
+    results = []
+
+    has_cache_code = any(
+        _grep_in_file(f, r"cache_get|cache_set|cache_key|simple_cache|sqlite_cache|CACHE_ENABLED")
+        for f in root.rglob("*.py") if "__pycache__" not in str(f)
+    )
+    results.append(CheckResult(
+        "CACHE-CODE", "LLM 缓存",
+        "存在缓存模块代码",
+        "通过" if has_cache_code else "失败",
+        f"{'已' if has_cache_code else '未'}检测到缓存实现",
+    ))
+
+    has_cache_endpoint = any(
+        _grep_in_file(f, r"/cache/stats|/cache/clear")
+        for f in root.rglob("*.py") if "__pycache__" not in str(f)
+    )
+    results.append(CheckResult(
+        "CACHE-API", "LLM 缓存",
+        "存在 /cache/stats 接口",
+        "通过" if has_cache_endpoint else "警告",
+        f"{'已' if has_cache_endpoint else '未'}检测到缓存管理端点",
+    ))
+
+    has_cache_hit = any(
+        _grep_in_file(f, r"cache_hit")
+        for f in root.rglob("*.py") if "__pycache__" not in str(f)
+    )
+    results.append(CheckResult(
+        "CACHE-HIT", "LLM 缓存",
+        "响应中含 cache_hit 字段",
+        "通过" if has_cache_hit else "警告",
+        f"{'已' if has_cache_hit else '未'}检测到 cache_hit 响应字段",
+    ))
+
+    return results
+
+
+def check_adr_module(root: Path) -> List[CheckResult]:
+    """检查 13: ADR 架构决策溯源."""
+    results = []
+
+    has_adr_code = any(
+        _grep_in_file(f, r"ADRPayload|add_adr|get_adr|adr_records\.json")
+        for f in root.rglob("*.py") if "__pycache__" not in str(f)
+    )
+    results.append(CheckResult(
+        "ADR-CODE", "ADR 溯源",
+        "存在 ADR 存储代码",
+        "通过" if has_adr_code else "失败",
+        f"{'已' if has_adr_code else '未'}检测到 ADR 实现",
+    ))
+
+    has_adr_endpoint = any(
+        _grep_in_file(f, r"@app\.(get|post).*[\"']/adr")
+        for f in root.rglob("*.py") if "__pycache__" not in str(f)
+    )
+    results.append(CheckResult(
+        "ADR-API", "ADR 溯源",
+        "存在 /adr 接口端点",
+        "通过" if has_adr_endpoint else "警告",
+        f"{'已' if has_adr_endpoint else '未'}检测到 ADR API 端点",
+    ))
+
+    has_adr_response = any(
+        _grep_in_file(f, r"adr_id|adr_status|adr_summary")
+        for f in root.rglob("*.py") if "__pycache__" not in str(f)
+    )
+    results.append(CheckResult(
+        "ADR-RESP", "ADR 溯源",
+        "推荐响应中含 adr 字段",
+        "通过" if has_adr_response else "警告",
+        f"{'已' if has_adr_response else '未'}检测到 adr_id/adr_status 响应字段",
+    ))
+
+    return results
+
+
+def check_combination_recommendation(root: Path) -> List[CheckResult]:
+    """检查 14: 架构模式组合推荐."""
+    results = []
+
+    has_combo_data = bool(list(root.rglob("architecture_combinations.json")))
+    has_combo_code = any(
+        _grep_in_file(f, r"combo_matcher|combination_candidates|score_combination|rank_combinations")
+        for f in root.rglob("*.py") if "__pycache__" not in str(f)
+    )
+    has_combo = has_combo_data or has_combo_code
+
+    results.append(CheckResult(
+        "COMBO-DATA", "组合推荐",
+        "存在组合模式数据/代码",
+        "通过" if has_combo else "失败",
+        f"数据: {'有' if has_combo_data else '无'}, 代码: {'有' if has_combo_code else '无'}",
+    ))
+
+    has_combo_response = any(
+        _grep_in_file(f, r"recommended_combination|combination_candidates")
+        for f in root.rglob("*.py") if "__pycache__" not in str(f)
+    )
+    results.append(CheckResult(
+        "COMBO-RESP", "组合推荐",
+        "响应中含 recommended_combination",
+        "通过" if has_combo_response else "警告",
+        f"{'已' if has_combo_response else '未'}检测到组合推荐响应字段",
+    ))
+
+    return results
+
+
+def check_refactoring_agent(root: Path) -> List[CheckResult]:
+    """检查 15: 架构重构建议模块."""
+    results = []
+
+    has_refactor_svc = (root / "services" / "refactoring_agent" / "app" / "main.py").exists()
+    results.append(CheckResult(
+        "REFAC-SVC", "重构建议",
+        "存在 refactoring-agent 微服务",
+        "通过" if has_refactor_svc else "失败",
+        f"{'已' if has_refactor_svc else '未'}检测到 refactoring_agent/main.py",
+    ))
+
+    dc_file = root / "docker-compose.yml"
+    dc_content = _read_file(dc_file) if dc_file.exists() else ""
+    refactor_in_dc = "refactoring-agent" in dc_content.lower()
+    results.append(CheckResult(
+        "REFAC-DC", "重构建议",
+        "docker-compose.yml 中含 refactoring-agent",
+        "通过" if refactor_in_dc else "警告",
+        f"{'已' if refactor_in_dc else '未'}在编排中检测到 refactoring-agent",
+    ))
+
+    has_refactor_code = any(
+        _grep_in_file(f, r"refactoring_advice|refactoring_needed|migration_steps|detect_smells")
+        for f in root.rglob("*.py") if "__pycache__" not in str(f)
+    )
+    results.append(CheckResult(
+        "REFAC-CODE", "重构建议",
+        "含重构检测和建议生成代码",
+        "通过" if has_refactor_code else "警告",
+        f"{'已' if has_refactor_code else '未'}检测到重构建议逻辑",
+    ))
+
+    return results
+
+
+def build_tech_compliance_table(all_results: List[CheckResult]) -> str:
+    """生成技术建议符合度表."""
+    tech_checks = [
+        ("LLM + 知识图谱双驱动", ["LLM-CONFIG", "LLM-CODE", "NEO4J-CODE", "NEO4J-DC"]),
+        ("LangChain Agent 协作", ["LANG-REQ", "LANG-CODE", "LANG-FALLBACK"]),
+        ("Neo4j 图谱存储", ["NEO4J-DC", "NEO4J-CODE", "NEO4J-REQ", "NEO4J-INIT", "NEO4J-FALLBACK"]),
+        ("Few-shot Prompt", ["FEW-PROMPTS", "FEW-EXAMPLES", "FEW-INTEGRATION"]),
+        ("规则引擎校验", ["AGT-COUNT"]),  # score_style 已在 Agent 检查中
+        ("LLM 缓存", ["CACHE-CODE", "CACHE-API", "CACHE-HIT"]),
+        ("ADR 溯源", ["ADR-CODE", "ADR-API", "ADR-RESP"]),
+        ("组合推荐", ["COMBO-DATA", "COMBO-RESP"]),
+        ("重构建议", ["REFAC-SVC", "REFAC-DC", "REFAC-CODE"]),
+    ]
+
+    status_map = {r.check_id: r.status for r in all_results}
+    lines = [
+        "",
+        "## 技术建议符合度",
+        "",
+        "| 技术建议 | 状态 | 通过/总检查数 |",
+        "|---|---|---|",
+    ]
+
+    all_ok = True
+    for tech_name, check_ids in tech_checks:
+        passed = sum(1 for cid in check_ids if status_map.get(cid) == "通过")
+        failed = sum(1 for cid in check_ids if status_map.get(cid) == "失败")
+        if failed > 0:
+            status_text = "⚠ 部分缺失"
+            all_ok = False
+        elif passed == len(check_ids):
+            status_text = "✅ 已实现"
+        elif passed > 0:
+            status_text = "🟡 部分实现"
+        else:
+            status_text = "❌ 未实现"
+            all_ok = False
+        lines.append(f"| {tech_name} | {status_text} | {passed}/{len(check_ids)} |")
+
+    if all_ok:
+        lines.append("")
+        lines.append("**所有课程技术建议均已实现!**")
+
+    return "\n".join(lines)
+
+
 def check_documentation(root: Path) -> List[CheckResult]:
     """检查 8: 文档完整性."""
     results = []
@@ -719,6 +1060,13 @@ def run_all_checks(root: Path) -> List[CheckResult]:
         ("6. Web API", check_web_api),
         ("7. 可视化", check_visualization),
         ("8. 文档与答辩", check_documentation),
+        ("9. Neo4j 图谱", check_neo4j_integration),
+        ("10. LangGraph 编排", check_langgraph_integration),
+        ("11. Few-shot Prompt", check_few_shot_prompts),
+        ("12. LLM 缓存", check_cache_module),
+        ("13. ADR 溯源", check_adr_module),
+        ("14. 组合推荐", check_combination_recommendation),
+        ("15. 重构建议", check_refactoring_agent),
     ]
     for category, check_fn in check_groups:
         try:
@@ -819,6 +1167,10 @@ def render_markdown(results: List[CheckResult], summary: Dict[str, Any], root: P
         icon = {"通过": "[OK]", "失败": "[FAIL]", "警告": "[WARN]", "未检查": "[-]"}.get(r.status, "[-]")
         lines.append(f"| {icon} {r.status} | {r.name} | {r.detail[:200]} |")
 
+    # 技术建议符合度表
+    lines.append(build_tech_compliance_table(results))
+    lines.append("")
+
     # 失败项汇总
     failures = [r for r in results if r.status == "失败"]
     if failures:
@@ -870,7 +1222,7 @@ def main():
         sys.exit(1)
 
     print(f"[*] 开始检查项目: {root}")
-    print(f"    共 8 大检查类别")
+    print(f"    共 15 大检查类别 (含课程技术建议) ")
     print()
 
     # 运行所有检查
