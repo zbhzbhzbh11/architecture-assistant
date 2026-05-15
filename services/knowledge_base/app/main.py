@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .json_repository import JsonRepository
@@ -52,6 +53,14 @@ def _repo(method_name: str, *args, **kwargs):
 
 
 app = FastAPI(title="Knowledge Base Service", version="0.2.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class StylePayload(BaseModel):
@@ -152,6 +161,12 @@ def feedback_stats() -> Dict[str, Any]:
 @app.get("/feedback/weights")
 def get_learned_weights() -> Dict[str, Any]:
     return _repo("get_learned_weights")
+
+
+@app.post("/feedback/reset")
+def reset_learned_weights() -> Dict[str, Any]:
+    """重置学习权重 (清空 Neo4j Feedback 节点 + JSON 文件)."""
+    return _repo("reset_learned_weights")
 
 
 class GraphMatchRequest(BaseModel):

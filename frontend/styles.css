@@ -147,6 +147,33 @@ th { background: #f3f4f6; font-weight: 600; }
 .step-list { font-size: 13px; line-height: 1.8; padding-left: 20px; }
 .step-list li { margin: 2px 0; }
 
+/* ── 知识进化：反馈 ── */
+.feedback-section { margin-bottom: 14px; }
+.feedback-label { font-weight: 600; margin-right: 10px; }
+.fb-btn {
+  border: none; border-radius: 6px; padding: 4px 12px;
+  font-size: 13px; cursor: pointer; font-family: inherit;
+  margin-right: 6px; margin-top: 4px;
+}
+.fb-confirm { background: #0d9488; color: #fff; }
+.fb-refine  { background: #2563eb; color: #fff; }
+.fb-cancel  { background: #e5e7eb; color: #374151; }
+.fb-refresh { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); }
+.fb-reset   { background: #fee2e2; color: var(--danger); border: 1px solid var(--danger); }
+.fb-clear   { background: #e0e7ff; color: #4338ca; border: 1px solid #818cf8; }
+.fb-refine  { background: #f59e0b; color: #fff; }
+.feedback-section textarea {
+  width: 100%; border: 1px solid #d1d5db; border-radius: 6px;
+  padding: 8px 10px; font-size: 13px; font-family: inherit;
+  resize: vertical; background: #fafafa;
+}
+.weights-table {
+  width: 100%; border-collapse: collapse; margin-top: 6px;
+  font-size: 13px;
+}
+.weights-table th { background: #f3f4f6; padding: 4px 8px; text-align: left; border-bottom: 2px solid #d1d5db; }
+.weights-table td { padding: 3px 8px; border-bottom: 1px solid #e5e7eb; }
+
 /* ── ADR ── */
 .adr-info { margin-bottom: 6px; line-height: 1.8; }
 .adr-info a { color: var(--accent); font-weight: 500; margin-left: 6px; }

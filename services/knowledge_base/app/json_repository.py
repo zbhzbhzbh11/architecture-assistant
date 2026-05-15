@@ -129,6 +129,12 @@ class JsonRepository:
         }
 
     @staticmethod
+    def reset_learned_weights() -> Dict[str, Any]:
+        """重置学习权重为空."""
+        _save_weights({})
+        return {"status": "ok", "message": "learned_weights reset"}
+
+    @staticmethod
     def graph_status() -> Dict[str, Any]:
         """JSON 后端没有图统计, 返回基本信息."""
         data = JsonRepository.get_styles()

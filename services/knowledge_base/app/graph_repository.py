@@ -175,32 +175,28 @@ class GraphRepository:
     @staticmethod
     def add_feedback(requirement: str, recommended_style: str,
                      user_choice: Optional[str], comment: Optional[str]) -> Optional[Dict[str, Any]]:
-        """保存反馈: JSON 为主存储(含权重学习), Neo4j 可选同步."""
-        # JSON 存储 + 权重学习 (始终执行)
-        from .json_repository import JsonRepository
-        result = JsonRepository.add_feedback(requirement, recommended_style, user_choice, comment)
+        """保存反馈: Neo4j 为主存储, JSON 为冷备."""
+        # 1. Neo4j 存储 (主)
+        total = GraphRepository._neo4j_save_feedback(
+            requirement, recommended_style, user_choice, comment)
 
-        # Neo4j 同步 (可选)
+        # 2. JSON 备份 (异步, 失败不阻塞)
         try:
-            from neo4j import GraphDatabase
-            driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
-            with driver.session() as session:
-                session.run("""
-                    CREATE (f:Feedback {
-                        timestamp: $ts, requirement: $req,
-                        recommended_style: $rec, user_choice: $choice,
-                        comment: $comment, is_confirmed: $confirmed
-                    })
-                """, {
-                    "ts": datetime.now().isoformat(timespec="seconds"),
-                    "req": requirement, "rec": recommended_style,
-                    "choice": user_choice, "comment": comment,
-                    "confirmed": user_choice == recommended_style,
-                })
-            driver.close()
+            from .json_repository import JsonRepository
+            JsonRepository.add_feedback(requirement, recommended_style, user_choice, comment)
         except Exception as e:
-            logger.warning(f"Neo4j feedback sync failed (non-fatal): {e}")
-        return result
+            logger.warning(f"JSON feedback backup skipped: {e}")
+
+        # 3. 从 Neo4j 重新计算权重并持久化到 learned_weights.json
+        try:
+            weights = GraphRepository._compute_weights_from_neo4j()
+            from .json_repository import _save_weights
+            _save_weights(weights)
+            logger.info(f"Learned weights recomputed from Neo4j: {len(weights)} dimensions")
+        except Exception as e:
+            logger.warning(f"Weight recomputation from Neo4j failed: {e}")
+
+        return {"status": "ok", "total_feedback": total}
 
     @staticmethod
     def get_feedback_stats() -> Optional[Dict[str, Any]]:
@@ -229,16 +225,99 @@ class GraphRepository:
         return {"total": total, "accuracy": accuracy, "confirmed": confirmed, "style_stats": style_stats}
 
     @staticmethod
+    def reset_learned_weights() -> Optional[Dict[str, Any]]:
+        """Graph 模式下委托 JSON 后端重置权重 (权重仅存 JSON)."""
+        return None  # 返回 None 触发 _repo() fallback 到 JSON
+
+    @staticmethod
     def get_learned_weights() -> Optional[Dict[str, Any]]:
-        """从 Neo4j 查询学习权重 (基于 Feedback 节点的特征提取)."""
-        feedback_result = GraphRepository.get_feedback()
-        if feedback_result is None:
+        """从 Neo4j 反馈数据直接计算学习权重 (Neo4j 为权威数据源)."""
+        from .json_repository import _FEEDBACK_LEXICON, _extract_features_from_requirement
+
+        rows = _run_query("MATCH (f:Feedback) RETURN f.requirement AS requirement, f.recommended_style AS style")
+        if rows is None:
             return None
 
-        # 在 Neo4j 模式下, 反馈权重通过 json_repository 的权重逻辑计算
-        # 因为特征提取依赖于中文词典, 不适合用 Cypher 实现
-        from .json_repository import JsonRepository
-        return JsonRepository.get_learned_weights()
+        weights: Dict[str, Dict[str, int]] = {}
+        for row in rows:
+            req = row.get("requirement", "")
+            style = row.get("style", "")
+            if not req or not style:
+                continue
+            features = _extract_features_from_requirement(req)
+            for feat in features:
+                weights.setdefault(feat, {}).setdefault(style, 0)
+                weights[feat][style] += 1
+
+        style_learn_counts: Dict[str, int] = {}
+        for feat, style_map in weights.items():
+            for style_name, count in style_map.items():
+                style_learn_counts[style_name] = style_learn_counts.get(style_name, 0) + count
+
+        return {
+            "weights": weights,
+            "total_feedback_learned": sum(style_learn_counts.values()),
+            "style_learn_counts": style_learn_counts,
+        }
+
+    # ── Neo4j 内部辅助 ──────────────────────────────────────────
+
+    @staticmethod
+    def _neo4j_save_feedback(requirement: str, recommended_style: str,
+                             user_choice: Optional[str], comment: Optional[str]) -> int:
+        """写入 Feedback 节点到 Neo4j, 返回总反馈数."""
+        try:
+            from neo4j import GraphDatabase
+            driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+            with driver.session() as session:
+                session.run("""
+                    CREATE (f:Feedback {
+                        timestamp: $ts, requirement: $req,
+                        recommended_style: $rec, user_choice: $choice,
+                        comment: $comment, is_confirmed: $confirmed
+                    })
+                """, {
+                    "ts": datetime.now().isoformat(timespec="seconds"),
+                    "req": requirement, "rec": recommended_style,
+                    "choice": user_choice, "comment": comment,
+                    "confirmed": user_choice == recommended_style,
+                })
+                total = session.run("MATCH (f:Feedback) RETURN count(f) AS cnt").single()["cnt"]
+            driver.close()
+            return total
+        except Exception as e:
+            logger.warning(f"Neo4j feedback save failed: {e}")
+            raise
+
+    @staticmethod
+    def _compute_weights_from_neo4j() -> Dict[str, Dict[str, int]]:
+        """从 Neo4j Feedback 节点批量计算 feature→style 权重."""
+        from .json_repository import _extract_features_from_requirement
+
+        rows = _run_query("MATCH (f:Feedback) RETURN f.requirement AS requirement, f.recommended_style AS style")
+        if rows is None:
+            return {}
+
+        weights: Dict[str, Dict[str, int]] = {}
+        for row in rows:
+            req = row.get("requirement", "")
+            style = row.get("style", "")
+            if not req or not style:
+                continue
+            features = _extract_features_from_requirement(req)
+            for feat in features:
+                weights.setdefault(feat, {}).setdefault(style, 0)
+                weights[feat][style] += 1
+        return weights
+
+    @staticmethod
+    def reset_learned_weights() -> Dict[str, Any]:
+        """清空 Neo4j 中所有 Feedback 节点, 并重置 learned_weights.json."""
+        _run_query("MATCH (f:Feedback) DETACH DELETE f")
+        from .json_repository import _save_weights
+        _save_weights({})
+        logger.info("Learned weights reset: Neo4j + JSON cleared")
+        return {"status": "ok", "message": "learned_weights reset"}
 
     @staticmethod
     def graph_match(features: Dict[str, bool]) -> Optional[Dict[str, Any]]:

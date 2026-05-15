@@ -25,6 +25,9 @@
       <div class="status-bar">
         <div id="cache-status"></div>
         <div id="workflow-status"></div>
+        <div style="margin-left:auto">
+          <button id="cache-clear" class="fb-btn fb-clear">清缓存重试</button>
+        </div>
       </div>
 
       <!-- 3. 识别特征 -->
@@ -58,11 +61,34 @@
       <h3>架构重构建议</h3>
       <div id="refactor-section" class="refactor-section"></div>
 
-      <!-- 10. ADR 决策溯源 -->
+      <!-- 10. 知识进化 — 用户反馈与权重 -->
+      <h3>知识进化 — 反馈与权重</h3>
+      <div id="feedback-section" class="feedback-section">
+        <div id="feedback-prompt" class="hidden">
+          <span class="feedback-label">这个推荐准确吗？</span>
+          <button id="feedback-confirm" class="fb-btn fb-confirm">确认 👍</button>
+          <button id="feedback-refine" class="fb-btn fb-refine">补充反馈重新推荐</button>
+          <div id="feedback-refine-box" class="hidden" style="margin-top:8px">
+            <textarea id="feedback-refine-text" rows="3" placeholder="输入补充需求，例如：还需要支持视频通话功能、对数据一致性要求很高..."></textarea>
+            <div style="margin-top:6px">
+              <button id="feedback-refine-submit" class="fb-btn fb-confirm">重新推荐</button>
+              <button id="feedback-refine-cancel" class="fb-btn fb-cancel">取消</button>
+            </div>
+          </div>
+          <div id="feedback-msg"></div>
+        </div>
+        <div id="weights-display" class="weights-display"></div>
+        <div style="margin-top:8px">
+          <button id="weights-refresh" class="fb-btn fb-refresh">刷新权重</button>
+          <button id="weights-reset" class="fb-btn fb-reset">重置学习权重</button>
+        </div>
+      </div>
+
+      <!-- 12. ADR 决策溯源 -->
       <h3>架构决策记录 (ADR)</h3>
       <div id="adr-info" class="adr-info"></div>
 
-      <!-- 11. 原始响应 -->
+      <!-- 13. 原始响应 -->
       <details><summary>原始响应 JSON</summary>
       <pre id="output"></pre>
       </details>
@@ -218,8 +244,139 @@
       div.innerHTML = html;
     }
 
+    // ── 知识进化：反馈与权重 ──
+    let _lastReq = '';           // 最后一次请求的需求文本
+    let _lastRecommended = '';   // 最后一次推荐的首选风格
+    let _lastCandidates = [];    // 最后一次推荐的全部候选
+
+    const GATEWAY = 'http://localhost:8000';
+    const KB_URL  = 'http://localhost:8004';
+
+    function showFeedbackPrompt(show) {
+      const p = $('feedback-prompt');
+      p.classList.toggle('hidden', !show);
+      if (!show) { $('feedback-refine-box').classList.add('hidden'); $('feedback-msg').innerHTML = ''; }
+    }
+
+    async function loadWeights() {
+      try {
+        const r = await fetch(KB_URL + '/feedback/weights');
+        const d = await r.json();
+        const w = d.weights || {};
+        const entries = Object.entries(w).filter(([,m]) => Object.keys(m).length);
+        const div = $('weights-display');
+        if (!entries.length) { div.innerHTML = '<span class="dim-text">暂无学习权重</span>'; return; }
+        let html = '<table class="weights-table"><thead><tr><th>特征维度</th><th>风格</th><th>确认次数</th></tr></thead><tbody>';
+        entries.forEach(([feat, map]) => {
+          Object.entries(map).forEach(([style, count]) => {
+            const active = count >= 2;
+            html += '<tr><td>' + (FEAT_LABELS[feat] || feat) + '</td><td>' + style + '</td>' +
+              '<td style="color:' + (active ? '#0d9488' : '#9ca3af') + '">' + count + (active ? ' ✓生效' : ' (待确认)') + '</td></tr>';
+          });
+        });
+        html += '</tbody></table>';
+        div.innerHTML = html;
+      } catch (e) { /* silent */ }
+    }
+
+    // ── 确认推荐（记录反馈 + 权重） ──
+    let _feedbackLocked = false;
+    async function doConfirm() {
+      if (_feedbackLocked) return;
+      _feedbackLocked = true;
+      $('feedback-msg').innerHTML = '<span class="cache-badge miss">提交中...</span>';
+      try {
+        const r = await fetch(KB_URL + '/feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requirement: _lastReq, recommended_style: _lastRecommended, user_choice: _lastRecommended, comment: '' })
+        });
+        const d = await r.json();
+        $('feedback-msg').innerHTML = '<span class="cache-badge hit">✓ 已确认推荐, 权重自动更新 (反馈#' + safe(d.total_feedback, '?') + ')</span>';
+        $('feedback-confirm').disabled = true;
+        $('feedback-confirm').style.opacity = '0.5';
+        await loadWeights();
+      } catch (e) {
+        $('feedback-msg').innerHTML = '<span class="dim-text" style="color:var(--danger)">提交失败，请重试</span>';
+        _feedbackLocked = false;
+      }
+    }
+
+    // ── 补充反馈 → 重新推荐 ──
+    async function doRefineSubmit() {
+      const extra = $('feedback-refine-text').value.trim();
+      if (!extra) return;
+      $('feedback-msg').innerHTML = '<span class="cache-badge miss">提交反馈并重新推荐...</span>';
+      // 提交补充反馈（携带 comment）
+      try { await fetch(KB_URL + '/feedback', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requirement: _lastReq, recommended_style: _lastRecommended, user_choice: _lastRecommended, comment: extra })
+      }); } catch (e) { /* 非关键 */ }
+      // 清缓存 + 组合新需求重新推荐
+      try { await fetch(GATEWAY + '/cache/clear', { method: 'POST' }); } catch (e) {}
+      const newReq = _lastReq + '。补充需求：' + extra;
+      $('requirement').value = newReq;
+      $('feedback-refine-box').classList.add('hidden');
+      $('feedback-refine-text').value = '';
+      await loadWeights();
+      btn.click();
+    }
+
+    $('feedback-confirm').addEventListener('click', doConfirm);
+    $('feedback-refine').addEventListener('click', () => {
+      $('feedback-refine-box').classList.remove('hidden');
+      $('feedback-refine-text').value = '';
+      $('feedback-refine-text').focus();
+    });
+    $('feedback-refine-submit').addEventListener('click', doRefineSubmit);
+    $('feedback-refine-cancel').addEventListener('click', () => {
+      $('feedback-refine-box').classList.add('hidden');
+    });
+    $('weights-refresh').addEventListener('click', async () => {
+      await loadWeights();
+      const now = new Date().toLocaleTimeString();
+      $('feedback-msg').innerHTML = '<span class="dim-text">权重已刷新 ' + now + '</span>';
+    });
+    $('weights-reset').addEventListener('click', async () => {
+      if (!confirm('确定要清除所有学习权重吗？此操作不可撤销，下次推荐将回到初始分数。')) return;
+      try {
+        const r = await fetch(KB_URL + '/feedback/reset', { method: 'POST' });
+        const d = await r.json();
+        if (d.status === 'ok') {
+          $('weights-display').innerHTML = '<span class="cache-badge hit">✓ 权重已重置 (' + (d.message || 'OK') + ')</span>';
+        }
+      } catch (e) {
+        $('weights-display').innerHTML = '<span class="dim-text" style="color:var(--danger)">重置失败</span>';
+        return;
+      }
+      try { await fetch(GATEWAY + '/cache/clear', { method: 'POST' }); } catch (e) {}
+      showFeedbackPrompt(false);
+      _feedbackLocked = false;
+      $('feedback-confirm').disabled = false;
+      $('feedback-confirm').style.opacity = '1';
+      $('feedback-msg').innerHTML = '<span class="cache-badge hit">✓ 已重置，下次推荐不受历史反馈影响</span>';
+      await loadWeights();
+    });
+
+    // 初始加载权重
+    loadWeights();
+
+    // ── 清缓存并刷新权重新推荐 ──
+    $('cache-clear').addEventListener('click', async () => {
+      try { await fetch(GATEWAY + '/cache/clear', { method: 'POST' }); } catch (e) {}
+      $('cache-status').innerHTML = '<span class="cache-badge hit">✓ 缓存已清</span>';
+      $('feedback-msg').innerHTML = '<span class="cache-badge hit">✓ 缓存已清，下次推荐将实时计算</span>';
+      await loadWeights();
+    });
+
     btn.addEventListener('click', async () => {
       btn.disabled = true; btn.innerText = '分析中...';
+      // 重置反馈状态（新请求开始）
+      _feedbackLocked = false;
+      showFeedbackPrompt(false);
+      $('feedback-confirm').disabled = false;
+      $('feedback-confirm').style.opacity = '1';
+      $('feedback-msg').innerHTML = '';
       try {
         const resp = await fetch('http://localhost:8000/api/v1/recommend', {
           method: 'POST',
@@ -275,6 +432,14 @@
           adrDiv.innerHTML = '<span class="cache-badge hit">✓ 已记录</span> <strong>' + adr.adr_id + '</strong>' +
             ' <a href="#" onclick="alert(\'ADR ID: ' + adr.adr_id + '\\n可通过 GET /adr/' + adr.adr_id + ' 查看完整决策记录\');return false;">查看决策溯源</a>';
         } else { adrDiv.innerHTML = '<span class="dim-text">未生成 ADR</span>'; }
+
+        // ── 知识进化：保存推荐上下文，显示反馈入口 ──
+        _lastReq = input.value;
+        _lastRecommended = fr.recommended_style || '';
+        _lastCandidates = safeArr(data?.candidates);
+        showFeedbackPrompt(!!_lastRecommended);
+        // 刷新权重（可能因刚才的请求而更新）
+        loadWeights();
 
         output.textContent = JSON.stringify(data, null, 2);
       } catch (e) {

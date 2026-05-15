@@ -158,18 +158,31 @@ def detect_smells(requirement: str, features: Dict[str, bool]) -> List[Dict[str,
 
 
 def select_patterns(req: str, features: Dict[str, bool],
-                    recommended_style: str) -> List[Dict[str, Any]]:
-    """根据需求和推荐风格选择适用的重构模式."""
-    selected: List[Dict[str, Any]] = []
+                    recommended_style: str,
+                    smells: List[Dict[str, Any]] | None = None) -> List[Dict[str, Any]]:
+    """根据需求和推荐风格选择适用的重构模式.
 
-    # 单体拆分 → Strangler Fig
+    前两个模式通过关键词匹配已有系统的重构信号;
+    后三个模式仅在确实检测到架构坏味时才推荐 (避免对新系统误报).
+    """
+    selected: List[Dict[str, Any]] = []
+    smells = smells or []
+    needs_refactor = len(smells) > 0 or any(
+        kw in req for kw in ["重构", "迁移", "拆分", "单体", "耦合", "老系统"]
+    )
+
+    # 单体拆分 → Strangler Fig (始终按关键词匹配)
     if any(kw in req for kw in ["单体", "拆分", "耦合严重", "已有系统", "老系统", "重构"]):
         selected.append(REFACTORING_PATTERNS["strangler_fig"])
 
-    # 遗留系统 → Anti-Corruption Layer
+    # 遗留系统 → Anti-Corruption Layer (始终按关键词匹配)
     if any(kw in req for kw in ["遗留系统", "老系统", "旧系统", "已有系统"]):
         if not any(p["name"] == "Anti-Corruption Layer" for p in selected):
             selected.append(REFACTORING_PATTERNS["anti_corruption_layer"])
+
+    # ── 以下模式仅在确实需要重构时才推荐 ──
+    if not needs_refactor:
+        return selected
 
     # 模块化优先 (不极端微服务)
     if features.get("complex_business") and not features.get("team_size_large"):
@@ -309,7 +322,7 @@ async def refactor(payload: RefactorRequest) -> Dict[str, Any]:
 
     # 1. 规则引擎检测
     smells = detect_smells(req, features)
-    patterns = select_patterns(req, features, rec_style)
+    patterns = select_patterns(req, features, rec_style, smells)
 
     # 2. 生成规则模板
     rule_result = build_rule_template(req, smells, patterns, rec_style, rec_combo, features)
