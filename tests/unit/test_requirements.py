@@ -1,6 +1,18 @@
 import asyncio
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
+
+# ── Mock missing modules before importing services ──
+if 'httpx' not in sys.modules:
+    _httpx_mock = MagicMock()
+    _httpx_mock.HTTPStatusError = type('HTTPStatusError', (Exception,), {})
+    _httpx_mock.AsyncClient = MagicMock()
+    _httpx_mock.Response = MagicMock()
+    sys.modules['httpx'] = _httpx_mock
+for _mod in ('fastapi', 'fastapi.middleware', 'fastapi.middleware.cors'):
+    if _mod not in sys.modules:
+        sys.modules[_mod] = MagicMock()
 
 import pytest
 

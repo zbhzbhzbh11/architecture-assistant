@@ -175,35 +175,32 @@ class GraphRepository:
     @staticmethod
     def add_feedback(requirement: str, recommended_style: str,
                      user_choice: Optional[str], comment: Optional[str]) -> Optional[Dict[str, Any]]:
-        """在 Neo4j 中创建 Feedback 节点."""
+        """保存反馈: JSON 为主存储(含权重学习), Neo4j 可选同步."""
+        # JSON 存储 + 权重学习 (始终执行)
+        from .json_repository import JsonRepository
+        result = JsonRepository.add_feedback(requirement, recommended_style, user_choice, comment)
+
+        # Neo4j 同步 (可选)
         try:
             from neo4j import GraphDatabase
             driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
             with driver.session() as session:
                 session.run("""
                     CREATE (f:Feedback {
-                        timestamp: $ts,
-                        requirement: $req,
-                        recommended_style: $rec,
-                        user_choice: $choice,
-                        comment: $comment,
-                        is_confirmed: $confirmed
+                        timestamp: $ts, requirement: $req,
+                        recommended_style: $rec, user_choice: $choice,
+                        comment: $comment, is_confirmed: $confirmed
                     })
                 """, {
                     "ts": datetime.now().isoformat(timespec="seconds"),
-                    "req": requirement,
-                    "rec": recommended_style,
-                    "choice": user_choice,
-                    "comment": comment,
+                    "req": requirement, "rec": recommended_style,
+                    "choice": user_choice, "comment": comment,
                     "confirmed": user_choice == recommended_style,
                 })
-                count_result = session.run("MATCH (f:Feedback) RETURN count(f) AS cnt")
-                total = count_result.single()["cnt"]
             driver.close()
-            return {"status": "ok", "total_feedback": total}
         except Exception as e:
-            logger.warning(f"Neo4j add_feedback failed: {e}")
-            return None
+            logger.warning(f"Neo4j feedback sync failed (non-fatal): {e}")
+        return result
 
     @staticmethod
     def get_feedback_stats() -> Optional[Dict[str, Any]]:

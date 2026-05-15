@@ -1,5 +1,19 @@
 """匹配模块单元测试: 规则引擎 + 图谱融合."""
 
+import sys
+from unittest.mock import MagicMock, patch, AsyncMock
+
+# ── Mock missing modules before importing services ──
+if 'httpx' not in sys.modules:
+    _httpx_mock = MagicMock()
+    _httpx_mock.HTTPStatusError = type('HTTPStatusError', (Exception,), {})
+    _httpx_mock.AsyncClient = MagicMock()
+    _httpx_mock.Response = MagicMock()
+    sys.modules['httpx'] = _httpx_mock
+for _mod in ('fastapi', 'fastapi.middleware', 'fastapi.middleware.cors'):
+    if _mod not in sys.modules:
+        sys.modules[_mod] = MagicMock()
+
 import pytest
 from services.matching_agent.app.main import score_style
 from services.matching_agent.app.graph_matcher import blend_scores, fetch_graph_evidence
@@ -194,3 +208,117 @@ def test_combination_for_im_scenario():
     result = rank_combinations(combos, scored, features, top_n=3)
     # 微服务+事件驱动 应该排第一 (高分 + 高并发+实时特征覆盖)
     assert "Microservices" in result[0]["combination_name"]
+
+
+# ── learned_weights 累计加分 ────────────────────────────────────
+
+def test_learned_weights_boosts_score():
+    """learned_weights 累计 3 条正向反馈 → 分数高于无条件时."""
+    style = {
+        "name": "Event-Driven Architecture",
+        "name_zh": "事件驱动架构",
+        "tags": ["high_concurrency", "real_time"],
+        "pros": ["high throughput"],
+        "pros_zh": ["高吞吐量"],
+        "cons": ["hard tracing"],
+        "cons_zh": ["调试困难"],
+        "best_for": ["real-time messaging"],
+        "best_for_zh": ["实时消息系统"],
+        "topology_mermaid": "",
+    }
+    features = {"high_concurrency": True, "real_time": True, "scalability": True}
+    learned_weights = {
+        "scalability": {"Event-Driven Architecture": 3},
+    }
+
+    no_weight = score_style(style, features)
+    with_weight = score_style(style, features, learned_weights)
+
+    assert with_weight["score"] == no_weight["score"] + 1, \
+        f"有权重时应 +1: 无权={no_weight['score']}, 有权={with_weight['score']}"
+    assert any("learned boost" in r for r in with_weight["reasons"]), \
+        f"理由应含 learned boost: {with_weight['reasons']}"
+    assert "scalability" in " ".join(with_weight["reasons"])
+
+
+def test_learned_weights_below_threshold_no_effect():
+    """learned_weights 累计 < 2 条 → 阈值未达, 不影响分数."""
+    style = {
+        "name": "Event-Driven Architecture",
+        "name_zh": "事件驱动架构",
+        "tags": ["high_concurrency"],
+        "pros": ["high throughput"],
+        "pros_zh": ["高吞吐量"],
+        "cons": ["hard tracing"],
+        "cons_zh": ["调试困难"],
+        "best_for": ["real-time messaging"],
+        "best_for_zh": ["实时消息系统"],
+        "topology_mermaid": "",
+    }
+    features = {"high_concurrency": True, "real_time": True}
+    learned_weights = {
+        "real_time": {"Event-Driven Architecture": 1},
+    }
+
+    no_weight = score_style(style, features)
+    with_weight = score_style(style, features, learned_weights)
+
+    assert with_weight["score"] == no_weight["score"], \
+        f"阈值未达时分数不变: 无权={no_weight['score']}, 有权={with_weight['score']}"
+    assert not any("learned boost" in r for r in with_weight["reasons"])
+
+
+# ── top3 边界补齐测试 ───────────────────────────────────────────
+
+def test_top3_zero_score_returns_mainstream():
+    """全部特征未命中(全 0 分) → 仍返回 3 个候选且主流架构必在列."""
+    import asyncio
+    from services.matching_agent.app.main import match, MatchRequest
+    from services.knowledge_base.app.main import load_styles
+
+    kb_data = load_styles()
+    features = {}
+
+    with patch("httpx.AsyncClient") as mock_client, \
+         patch("services.matching_agent.app.main.fetch_graph_evidence", new=AsyncMock(return_value=None)):
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.json.return_value = kb_data
+        mock_instance = AsyncMock()
+        mock_instance.__aenter__.return_value.get.return_value = mock_resp
+        mock_client.return_value = mock_instance
+
+        result = asyncio.run(match(MatchRequest(features=features)))
+
+    assert len(result.candidates) >= 3, f"全 0 分应返回 ≥ 3 个候选: {len(result.candidates)}"
+    mainstream = {"Layered Architecture", "Microservices", "Event-Driven Architecture"}
+    candidate_names = {c["style"] for c in result.candidates}
+    overlap = candidate_names & mainstream
+    assert len(overlap) >= 1, f"候选未含主流架构: {candidate_names}"
+
+
+def test_top3_non_mainstream_lead_still_includes_mainstream():
+    """非主流架构评分更高时 → 主流架构仍应出现在候选集中."""
+    import asyncio
+    from services.matching_agent.app.main import match, MatchRequest
+
+    features = {"deployment_constraint": True}
+
+    with patch("httpx.AsyncClient") as mock_client, \
+         patch("services.matching_agent.app.main.fetch_graph_evidence", new=AsyncMock(return_value=None)):
+        from services.knowledge_base.app.main import load_styles
+        kb_data = load_styles()
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.json.return_value = kb_data
+        mock_instance = AsyncMock()
+        mock_instance.__aenter__.return_value.get.return_value = mock_resp
+        mock_client.return_value = mock_instance
+
+        result = asyncio.run(match(MatchRequest(features=features)))
+
+    assert len(result.candidates) >= 3, f"应返回 ≥ 3 个候选: {len(result.candidates)}"
+    mainstream = {"Layered Architecture", "Microservices", "Event-Driven Architecture"}
+    candidate_names = {c["style"] for c in result.candidates}
+    overlap = candidate_names & mainstream
+    assert len(overlap) >= 1, f"候选未含主流架构: {candidate_names}"

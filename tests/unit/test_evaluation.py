@@ -4,6 +4,17 @@ import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+# ── Mock missing modules before importing services ──
+if 'httpx' not in sys.modules:
+    _httpx_mock = MagicMock()
+    _httpx_mock.HTTPStatusError = type('HTTPStatusError', (Exception,), {})
+    _httpx_mock.AsyncClient = MagicMock()
+    _httpx_mock.Response = MagicMock()
+    sys.modules['httpx'] = _httpx_mock
+for _mod in ('fastapi', 'fastapi.middleware', 'fastapi.middleware.cors'):
+    if _mod not in sys.modules:
+        sys.modules[_mod] = MagicMock()
+
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
@@ -443,3 +454,89 @@ def test_evaluate_includes_recommended_combination():
 
     assert "recommended_combination" in eval_result
     assert "combination_candidates" in eval_result
+
+
+# ── llm_summary fallback + 降级格式 ────────────────────────────
+
+def test_llm_summary_timeout_triggers_fallback():
+    """llm_summary 因 LLM 超时 → 触发 _fallback_summary() 且返回格式完整."""
+    import asyncio
+    from services.evaluation_agent.app.main import llm_summary
+    import services.evaluation_agent.app.main as eval_mod
+
+    candidates = [
+        {"style": "Event-Driven Architecture", "score": 8, "reasons": ["matches feature: high_concurrency"], "pros": ["high throughput", "loose coupling"], "cons": ["hard tracing", "eventual consistency complexity"]},
+        {"style": "Microservices", "score": 5, "reasons": ["matches feature: scalability"], "pros": ["high scalability"], "cons": ["distributed complexity"]},
+        {"style": "Layered Architecture", "score": 3, "reasons": ["matches feature: complex_business"], "pros": ["high maintainability"], "cons": ["performance overhead"]},
+    ]
+
+    with patch.object(eval_mod, 'LLM_API_BASE', 'http://mock'), \
+         patch.object(eval_mod, 'LLM_API_KEY', 'mock-key'), \
+         patch.object(eval_mod, 'LLM_MODEL', 'mock-model'), \
+         patch("services.evaluation_agent.app.main.httpx.AsyncClient") as mock_client:
+        mock_instance = AsyncMock()
+        mock_instance.__aenter__.return_value.post.side_effect = asyncio.TimeoutError("LLM timed out")
+        mock_client.return_value = mock_instance
+
+        result = asyncio.run(llm_summary(REQUIREMENT_TEXT, candidates, "Event-Driven Architecture"))
+
+    assert isinstance(result, str), "fallback 应返回字符串"
+    assert len(result) > 0, "fallback 不应为空"
+    assert "推荐架构" in result, f"应含推荐架构: {result}"
+    assert "优缺点分析" in result, f"应含优缺点分析: {result}"
+    assert "√ 优点" in result, "应含 √ 优点标记"
+    assert "× 缺点" in result, "应含 × 缺点标记"
+    assert "Event-Driven Architecture" in result, "应含推荐风格名称"
+
+
+def test_fallback_summary_format_with_three_styles():
+    """_fallback_summary() 传入3种风格 → 输出包含 recommendation / pros / cons."""
+    from services.evaluation_agent.app.main import _fallback_summary
+
+    candidates = [
+        {"style": "Event-Driven Architecture", "score": 8, "reasons": ["matches feature: high_concurrency"], "pros": ["high throughput", "loose coupling"], "pros_zh": ["高吞吐量", "松耦合"], "cons": ["hard tracing", "eventual consistency complexity"], "cons_zh": ["调试困难", "最终一致性复杂"]},
+        {"style": "Microservices", "score": 5, "reasons": ["matches feature: scalability"], "pros": ["high scalability"], "cons": ["distributed complexity"]},
+        {"style": "Layered Architecture", "score": 3, "reasons": ["matches feature: strict_consistency"], "pros": ["high maintainability"], "cons": ["performance overhead"]},
+    ]
+
+    result = _fallback_summary("Event-Driven Architecture", candidates)
+
+    assert "1. 推荐架构" in result
+    assert "Event-Driven Architecture" in result
+    assert "2. 推荐理由" in result
+    assert "3. 优缺点分析" in result
+    assert "√ 优点" in result
+    assert "high throughput" in result or "loose coupling" in result
+    assert "× 缺点" in result
+    assert "hard tracing" in result or "eventual consistency complexity" in result
+
+
+# ── llm_vote_style 异常路径 ─────────────────────────────────────
+
+def test_llm_vote_non_style_response_returns_none():
+    """LLM 返回非有效风格名称 → llm_vote_style 返回 None 而非抛出."""
+    import asyncio
+    from services.evaluation_agent.app.main import llm_vote_style
+    import services.evaluation_agent.app.main as eval_mod
+
+    candidates = [
+        {"style": "Event-Driven Architecture", "score": 8},
+        {"style": "Microservices", "score": 5},
+    ]
+
+    with patch.object(eval_mod, 'LLM_API_BASE', 'http://mock'), \
+         patch.object(eval_mod, 'LLM_API_KEY', 'mock-key'), \
+         patch.object(eval_mod, 'LLM_MODEL', 'mock-model'), \
+         patch("services.evaluation_agent.app.main.httpx.AsyncClient") as mock_client:
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.json.return_value = {
+            "choices": [{"message": {"content": "这不是一个有效的风格名称"}}]
+        }
+        mock_instance = AsyncMock()
+        mock_instance.__aenter__.return_value.post.return_value = mock_resp
+        mock_client.return_value = mock_instance
+
+        result = asyncio.run(llm_vote_style("测试需求文本", candidates))
+
+    assert result is None, "LLM 返回无效风格名称时应返回 None"
