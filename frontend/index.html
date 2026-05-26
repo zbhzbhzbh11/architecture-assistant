@@ -54,11 +54,9 @@
               <div id="topology"></div>
             </div>
           </div>
-          <h3>图谱驱动证据</h3>
-          <div id="graph-evidence" class="graph-evidence"></div>
           <h3>架构对比矩阵</h3>
           <table id="matrix">
-            <thead><tr><th>推荐</th><th>架构风格</th><th>规则分</th><th>图谱分</th><th>融合分</th><th>关键理由</th><th>优点</th><th>缺点</th></tr></thead>
+            <thead><tr><th>推荐</th><th>架构风格</th><th>得分</th><th>关键理由</th><th>优点</th><th>缺点</th></tr></thead>
             <tbody></tbody>
           </table>
           <div class="matrix-cards" id="matrix-cards"></div>
@@ -133,7 +131,7 @@
       complex_business:'复杂业务',strict_consistency:'强一致性',deployment_constraint:'部署约束',
       data_intensive:'数据密集型',team_size_large:'多团队',security:'安全性',simple_crud:'极简业务',resource_constrained:'资源受限'
     };
-    const SKELETON_PHASES = ['正在 LLM 提取需求特征...', '正在规则引擎+图谱引擎并行评分...', '正在评估决策...'];
+    const SKELETON_PHASES = ['正在提取需求特征...', '正在匹配架构风格...', '正在评估决策...'];
     function setSkeletonPhase(idx) { const p = $('skeleton-phase'); if (p) p.textContent = SKELETON_PHASES[idx] || ''; }
     const STYLE_DEFS = {
       'Layered Architecture':       {zh:'分层架构', tags:['complex_business','strict_consistency','security','simple_crud'], penalty:{high_concurrency:-2,real_time:-2,data_intensive:-2}},
@@ -160,21 +158,10 @@
       matrixBody.innerHTML = '';
       rows.forEach(row => {
         const tr = document.createElement('tr');
-        const ruleS = safe(row.rule_score, null);
-        const graphS = safe(row.graph_score, null);
-        const blendS = safe(row.score, '-');
-        // 规则分列: 有值显示蓝色, 否则灰色
-        const ruleHtml = ruleS != null ? '<span class="score-rule">' + ruleS + '</span>' : '<span class="dim-text">--</span>';
-        // 图谱分列: 有值显示绿色, 否则灰色
-        const graphHtml = graphS != null ? '<span class="score-graph">' + graphS + '</span>' : '<span class="dim-text">--</span>';
-        // 融合分列: 紫色加粗
-        const blendHtml = '<span class="score-blend">' + blendS + '</span>';
         tr.innerHTML = [
           '<td style="font-weight:600">' + safeStr(row.recommendation_type, '-') + '</td>',
           '<td>' + safeStr(row.style_zh, row.style || '-') + '</td>',
-          '<td>' + ruleHtml + '</td>',
-          '<td>' + graphHtml + '</td>',
-          '<td>' + blendHtml + '</td>',
+          '<td>' + safe(row.score, '-') + '</td>',
           '<td>' + (safeArr(row.key_reasons).join('; ') || '-') + '</td>',
           '<td>' + (safeArr(row.pros_zh).length ? safeArr(row.pros_zh).join('; ') : safeArr(row.pros).join('; ') || '-') + '</td>',
           '<td>' + (safeArr(row.cons_zh).length ? safeArr(row.cons_zh).join('; ') : safeArr(row.cons).join('; ') || '-') + '</td>',
@@ -189,14 +176,9 @@
       div.innerHTML = '';
       rows.forEach((row, i) => {
         const tag = i === 0 ? '<span class="combo-badge">核心推荐</span>' : '<span class="cache-badge">备选</span>';
-        const ruleS = safe(row.rule_score, null);
-        const graphS = safe(row.graph_score, null);
-        const scoreLine = (ruleS != null ? '<span class="score-rule">规则' + ruleS + '</span> ' : '') +
-                          (graphS != null ? '<span class="score-graph">图谱' + graphS + '</span> ' : '') +
-                          '<span class="score-blend">融合' + safe(row.score, '-') + '</span>';
         div.innerHTML += '<div class="mcard">' +
           '<div class="mcard-head">' + tag + ' <strong>' + safeStr(row.style_zh, row.style || '-') + '</strong>' +
-          ' <span class="mscore">' + scoreLine + '</span></div>' +
+          ' <span class="mscore">得分 ' + safe(row.score, '-') + '</span></div>' +
           '<div class="mcard-body">' +
           '<div><b>理由</b> ' + (safeArr(row.key_reasons).join('；') || '-') + '</div>' +
           '<div><b>优点</b> ' + (safeArr(row.pros_zh).length ? safeArr(row.pros_zh).join('；') : safeArr(row.pros).join('；') || '-') + '</div>' +
@@ -263,10 +245,6 @@
       });
       html += '</tr></thead><tbody>';
 
-      // Build candidate lookup by style name for graph evidence
-      const candByStyle = {};
-      rows.forEach(r => { candByStyle[r.style] = r; });
-
       // Feature rows (标签匹配 +2 / 惩罚负值)
       activeFeats.forEach(feat => {
         html += '<tr><td><span class="feat-tag small">' + (FEAT_LABELS[feat] || feat) + '</span></td>';
@@ -286,51 +264,12 @@
         html += '</tr>';
       });
 
-      // Graph: matched_scenarios row (图谱场景匹配)
-      const hasScenarios = colOrder.some(s => {
-        const c = candByStyle[s];
-        return c && safeArr(c.matched_scenarios).length > 0;
-      });
-      if (hasScenarios) {
-        html += '<tr class="im-graph"><td>图谱 场景匹配</td>';
-        colOrder.forEach(style => {
-          const c = candByStyle[style];
-          const scs = c ? safeArr(c.matched_scenarios) : [];
-          html += '<td>' + (scs.length ? '<span class="im-plus">' + scs.length + '个</span>' : '<span class="im-zero">&mdash;</span>') + '</td>';
-        });
-        html += '</tr>';
-      }
-
-      // Graph: combinable_styles row (图谱可组合风格)
-      const hasCombinable = colOrder.some(s => {
-        const c = candByStyle[s];
-        return c && safeArr(c.combinable_styles).length > 0;
-      });
-      if (hasCombinable) {
-        html += '<tr class="im-graph"><td>图谱 可组合</td>';
-        colOrder.forEach(style => {
-          const c = candByStyle[style];
-          const comps = c ? safeArr(c.combinable_styles) : [];
-          html += '<td>' + (comps.length ? '<span class="im-plus">' + comps.join('/') + '</span>' : '<span class="im-zero">&mdash;</span>') + '</td>';
-        });
-        html += '</tr>';
-      }
-
-      // Graph: related_risks row (图谱关联风险数)
-      html += '<tr class="im-graph"><td>图谱 关联风险</td>';
-      colOrder.forEach(style => {
-        const c = candByStyle[style];
-        const risks = c ? safeArr(c.related_risks) : [];
-        html += '<td>' + (risks.length ? '<span class="im-warn">' + risks.length + '项</span>' : '<span class="im-zero">&mdash;</span>') + '</td>';
-      });
-      html += '</tr>';
-
       // LLM vote row
       html += '<tr class="im-vote"><td>LLM 投票</td>';
       colOrder.forEach(style => {
         const row = rows.find(r => r.style === style);
         const reasons = safeArr(row ? row.key_reasons : []);
-        const gotVote = reasons.some(r => r.includes('LLM投票') || r.includes('大模型') || r.includes('llm_vote'));
+        const gotVote = reasons.some(r => r.includes('LLM投票') || r.includes('大模型'));
         html += '<td>' + (gotVote ? '<span class="im-plus">+1</span>' : '<span class="im-zero">&mdash;</span>') + '</td>';
       });
       html += '</tr>';
@@ -362,56 +301,19 @@
       div.innerHTML = html;
     }
 
-    function renderGraphEvidence(data) {
-      const div = $('graph-evidence');
-      const rows = safeArr(data?.final_report?.comparison_matrix);
-      if (!rows.length) { div.innerHTML = ''; return; }
-
-      let html = '';
-      rows.forEach((row, i) => {
-        const matched = safeArr(row.matched_attributes);
-        const scenarios = safeArr(row.matched_scenarios);
-        const risks = safeArr(row.related_risks);
-        const combos = safeArr(row.combinable_styles);
-        if (!matched.length && !scenarios.length && !risks.length && !combos.length) return;
-
-        const tag = i === 0 ? '<span class="combo-badge">推荐</span>' : '<span class="cache-badge">备选</span>';
-        html += '<div class="ge-card">' +
-          '<div class="ge-style-name">' + tag + ' ' + safeStr(row.style_zh, row.style || '') + '</div>';
-        if (matched.length) {
-          html += '<div class="ge-item ge-attr"><span class="ge-icon">🔗</span>匹配属性: ' +
-            matched.map(a => '<span class="feat-tag small">' + (FEAT_LABELS[a] || a) + '</span>').join(' ') + '</div>';
-        }
-        if (scenarios.length) {
-          html += '<div class="ge-item ge-scenario"><span class="ge-icon">🎯</span>适用场景: ' + scenarios.join('、') + '</div>';
-        }
-        if (risks.length) {
-          html += '<div class="ge-item ge-risk"><span class="ge-icon">⚠</span>关联风险: ' + risks.join('、') + '</div>';
-        }
-        if (combos.length) {
-          html += '<div class="ge-item ge-combo"><span class="ge-icon">🔄</span>可组合风格: ' + combos.join('、') + '</div>';
-        }
-        html += '</div>';
-      });
-      div.innerHTML = html || '<span class="dim-text">图谱未返回证据（可能仅使用规则引擎）</span>';
-    }
-
     function renderWorkflowTrace(data) {
       const div = $('workflow-trace');
       const trace = safeArr(data?.workflow_trace);
       const engine = safeStr(data?.workflow_engine, 'langgraph');
-      $('workflow-status').innerHTML = '<span class="cache-badge">编排引擎: ' + engine + ' (双驱动)</span>';
+      $('workflow-status').innerHTML = '<span class="cache-badge">编排引擎: ' + engine + '</span>';
 
       if (!trace.length) { div.innerHTML = ''; return; }
       const total = trace.reduce((s, t) => s + safe(t.elapsed_ms, 0), 0);
-      div.innerHTML = trace.map((t, i) => {
+      div.innerHTML = trace.map(t => {
         const ok = t.status !== 'error';
         const ms = safe(t.elapsed_ms, 0);
-        const nodeName = safeStr(t.node, '?');
-        // 在 match 阶段标注并行
-        const label = nodeName === 'match' ? 'match ∥并行' : nodeName;
         return '<span class="trace-dot" style="color:' + (ok ? '#0d9488' : '#ef4444') + '">' +
-          label + ' ' + ms + 'ms</span>';
+          safeStr(t.node, '?') + ' ' + ms + 'ms</span>';
       }).join(' <span class="trace-arrow">&rarr;</span>') +
       ' <span class="trace-dot dim">共 ' + total + 'ms</span>';
     }
@@ -627,24 +529,11 @@
         $('skeleton').classList.add('hidden');
         $('result-content').classList.remove('hidden');
 
-        // Summary — 双引擎展示
+        // Summary
         const recZh = safeStr(fr.recommended_style_zh, fr.recommended_style || '');
         const alts = safeArr(fr.alternative_styles_zh).length ? safeArr(fr.alternative_styles_zh) : safeArr(fr.alternative_styles);
         const altText = alts.length ? '（备选：' + alts.join('、') + '）' : '';
-        // 提取首选候选的双引擎分数
-        const bestCand = safeArr(fr.comparison_matrix)[0];
-        let dualScoreHtml = '';
-        if (bestCand) {
-          const rs = safe(bestCand.rule_score, null);
-          const gs = safe(bestCand.graph_score, null);
-          if (rs != null && gs != null) {
-            dualScoreHtml = '<div class="dual-drive-line"><span class="score-rule">规则引擎 ' + rs + '分</span> + <span class="score-graph">图谱引擎 ' + gs + '分</span> → <span class="score-blend">融合 ' + safe(bestCand.score, '?') + '分</span></div>';
-          } else if (rs != null) {
-            dualScoreHtml = '<div class="dual-drive-line"><span class="score-rule">规则引擎 ' + rs + '分</span> <span class="dim-text">(图谱不可用)</span></div>';
-          }
-        }
         summary.innerHTML = '<div class="rec-main"><span class="rec-badge">核心推荐</span><strong>' + recZh + '</strong></div>' +
-          dualScoreHtml +
           (altText ? '<div class="rec-alt">' + altText + '</div>' : '') +
           '<details class="llm-detail"><summary>LLM 分析报告</summary><div class="llm-report">' + marked.parse(safeStr(fr.decision_basis?.llm_summary, '')) + '</div></details>';
 
@@ -661,7 +550,6 @@
 
         renderFeatures(data?.extracted_features, data?.feature_hits);
         renderArchInclination(data);
-        renderGraphEvidence(data);
         renderImpactTable(data);
         renderWorkflowTrace(data);
         renderCombo(data);

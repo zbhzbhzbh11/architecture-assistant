@@ -243,25 +243,7 @@ def get_adr(adr_id: str) -> Dict[str, Any]:
     return result
 
 
-# ── 图谱评分端点 (双驱动架构) ──────────────────────────────────
-
-class GraphScoreRequest(BaseModel):
-    features: Dict[str, bool]
-
-
-@app.post("/graph/score")
-def graph_score(payload: GraphScoreRequest) -> Dict[str, Any]:
-    """图谱评分: 一条 Cypher 完成 HAS_QUALITY + HAS_PENALTY + ScoringRule + LEARNED_FOR.
-
-    Neo4j 不可用时返回 available=false, matching-agent 回退到纯规则引擎.
-    """
-    if not _prefer_graph():
-        return {"available": False, "reason": "Graph backend not enabled"}
-    result = GraphRepository.graph_score(payload.features)
-    if result is None:
-        return {"available": False, "reason": "Neo4j unavailable"}
-    return result
-
+# ── 图谱查询端点 ──────────────────────────────────────────────
 
 @app.get("/graph/risks/{style_name}")
 def graph_risks(style_name: str) -> Dict[str, Any]:

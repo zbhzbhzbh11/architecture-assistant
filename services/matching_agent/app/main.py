@@ -1,10 +1,9 @@
-"""Matching Agent — 双驱动并行架构 (规则引擎 + 图谱引擎).
+"""Matching Agent — 规则引擎评分 + Neo4j 知识图谱数据源.
 
-匹配流程由 4 子节点 Subgraph 驱动:
-  START → Send(rule_score ∥ graph_score) → blend → combo_rank → END
+匹配流程由 3 子节点 Subgraph 驱动:
+  rule_score → top3_select → combo_rank
 
-纯评分函数 (score_style, rank_combinations) 从
-common.matching 导入, Subgraph 节点和 HTTP 端点共用同一套逻辑.
+规则引擎从 Neo4j 读取风格/权重数据, 执行 5 层确定性评分.
 """
 
 import os
@@ -52,13 +51,6 @@ def health() -> Dict[str, str]:
 async def match(payload: MatchRequest) -> MatchResponse:
     """POST /match — 特征向量 → Top 3 候选 + 组合推荐."""
     subgraph = _get_subgraph()
-    if subgraph is not None:
-        return await _match_via_subgraph(payload, subgraph)
-    return await _match_direct(payload)
-
-
-async def _match_via_subgraph(payload: MatchRequest, subgraph) -> MatchResponse:
-    """Subgraph 路径: StateGraph 执行."""
     initial_state: Dict[str, Any] = {
         "features": payload.features,
         "llm_disputed": payload.llm_disputed,
@@ -68,35 +60,4 @@ async def _match_via_subgraph(payload: MatchRequest, subgraph) -> MatchResponse:
     return MatchResponse(
         candidates=result.get("candidates", []),
         combination_candidates=result.get("combination_candidates", []),
-    )
-
-
-async def _match_direct(payload: MatchRequest) -> MatchResponse:
-    """直落路径: asyncio.gather 并行 (langgraph 不可用时)."""
-    import asyncio
-    from .matching_subgraph import _rule_score_node, _graph_score_node, _blend_node, _combo_rank_node
-
-    state: Dict[str, Any] = {
-        "features": payload.features,
-        "llm_disputed": payload.llm_disputed,
-        "arch_inclination": payload.arch_inclination,
-    }
-
-    # 并行执行规则评分 + 图谱评分 (asyncio.gather 替代 Send())
-    rule_result, graph_result = await asyncio.gather(
-        _rule_score_node(state),
-        _graph_score_node(state),
-    )
-    state.update(rule_result)
-    state.update(graph_result)
-
-    # 融合 + 组合推荐
-    blend_result = await _blend_node(state)
-    state.update(blend_result)
-    combo_result = await _combo_rank_node(state)
-    state.update(combo_result)
-
-    return MatchResponse(
-        candidates=state.get("candidates", []),
-        combination_candidates=state.get("combination_candidates", []),
     )

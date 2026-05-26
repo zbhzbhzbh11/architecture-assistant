@@ -261,19 +261,12 @@ async def _merge_node(state: Dict[str, Any]) -> Dict[str, Any]:
         comparison_matrix.append({
             "style": item["style"], "style_zh": item.get("style_zh", item["style"]),
             "score": item["score"],
-            "rule_score": item.get("rule_score"),
-            "graph_score": item.get("graph_score"),
             "recommendation_type": "核心推荐" if i == 0 else "备选架构",
             "pros": item.get("pros", []), "pros_zh": item.get("pros_zh", []),
             "cons": item.get("cons", []), "cons_zh": item.get("cons_zh", []),
             "key_reasons": _localize_reasons(item.get("reasons", [])),
             "key_reasons_raw": item.get("reasons", []),
             "topology_mermaid": item.get("topology_mermaid", ""),
-            # 图谱证据 (前端展示用)
-            "matched_attributes": item.get("matched_attributes", []),
-            "matched_scenarios": item.get("matched_scenarios", []),
-            "related_risks": item.get("related_risks", []),
-            "combinable_styles": item.get("combinable_styles", []),
         })
 
     risk_info = await _dynamic_risks(best_style)
