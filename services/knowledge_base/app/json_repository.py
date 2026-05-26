@@ -36,18 +36,15 @@ WEIGHTS_PATH = DATA_DIR / "learned_weights.json"
 # 中文关键词词典 — 从需求文本中提取 10 维特征
 # 与 requirements_agent 的 lexicon 保持一致
 # ═══════════════════════════════════════════════════════════════
-_FEEDBACK_LEXICON: Dict[str, List[str]] = {
-    "high_concurrency": ["高并发", "并发", "万人", "海量用户", "峰值", "秒杀", "高吞吐", "qps"],
-    "real_time": ["实时", "即时", "在线", "低延迟", "毫秒", "消息", "通知", "im"],
-    "reliability": ["可靠", "高可用", "容灾", "容错", "稳定", "不丢", "一致性"],
-    "scalability": ["扩展", "弹性", "扩容", "横向", "scale", "可伸缩"],
-    "complex_business": ["复杂业务", "交易", "审批", "规则", "工作流", "workflow"],
-    "strict_consistency": ["强一致", "事务", "金融", "账务", "一致提交"],
-    "deployment_constraint": ["本地部署", "私有化", "边缘", "多地域", "离线", "内网"],
-    "data_intensive": ["数据流", "etl", "流处理", "日志", "监控", "数据中台", "批处理", "流水线", "管道", "图像处理"],
-    "team_size_large": ["多团队", "多个团队", "跨团队", "多人协作", "并行开发"],
-    "security": ["安全", "加密", "认证", "鉴权", "授权", "审计", "隔离", "防护", "合规", "脱敏", "权限"],
-}
+LEXICON_PATH = DATA_DIR / "feature_lexicon.json"
+
+
+def _load_lexicon() -> Dict[str, List[str]]:
+    """从 feature_lexicon.json 加载关键词词典 (12 维, 与 requirements_agent 同源)."""
+    if LEXICON_PATH.exists():
+        with open(LEXICON_PATH, "r", encoding="utf-8") as f:
+            return json.load(f).get("lexicon", {})
+    return {}
 
 
 class JsonRepository:
@@ -169,6 +166,108 @@ class JsonRepository:
             "relationship_count": 0,
         }
 
+    # ── 图谱风险 (JSON fallback) ──────────────────────────────────
+
+    _RISK_MAP: Dict[str, Dict[str, List[str]]] = {
+        "Event-Driven Architecture": {
+            "main_risks": ["事件溯源实现复杂度高，调试困难",
+                           "事件一致性设计难度大，需额外处理幂等与乱序",
+                           "分布式链路追踪和监控成本较高"],
+            "suggestions": ["引入消息队列（如Kafka/RabbitMQ）并设置死信队列",
+                            "建立事件Schema版本管理，保证向前兼容",
+                            "部署分布式追踪系统（如Jaeger/Zipkin）"],
+        },
+        "Microservices": {
+            "main_risks": ["分布式系统复杂度高，事务一致性难保障",
+                           "服务间通信延迟和网络故障风险增大",
+                           "运维成本高，需完善CI/CD和容器编排"],
+            "suggestions": ["采用Saga模式处理分布式事务",
+                            "引入服务网格（如Istio）管理服务间通信",
+                            "建立统一的API网关和认证授权中心"],
+        },
+        "Layered Architecture": {
+            "main_risks": ["跨层调用带来性能开销，高并发场景可能成为瓶颈",
+                           "层级耦合可能导致变更影响面大",
+                           "横向扩展能力有限，不适合极端流量场景"],
+            "suggestions": ["严格遵循单向依赖，避免跨层直接调用",
+                            "核心业务层可结合CQRS读写分离缓解性能压力",
+                            "通过水平扩展+负载均衡提升吞吐量"],
+        },
+        "SOA": {
+            "main_risks": ["ESB总线可能成为性能瓶颈",
+                           "治理机制繁重增加开发开销",
+                           "服务粒度划分困难容易导致过度拆分或欠拆分"],
+            "suggestions": ["提前规划ESB扩容与高可用方案",
+                            "定义清晰的服务契约与版本管理策略",
+                            "引入轻量级集成层简化通信"],
+        },
+        "Hexagonal Architecture": {
+            "main_risks": ["学习曲线较陡团队上手成本高",
+                           "样板代码较多增加维护负担",
+                           "简单CRUD场景存在过度设计风险"],
+            "suggestions": ["从核心领域层开始逐步向外扩展",
+                            "通过代码生成减少端口-适配器样板代码",
+                            "定期评审架构边界避免抽象泄漏"],
+        },
+        "Pipeline-Filter": {
+            "main_risks": ["分布式管道调试复杂定位困难",
+                           "阶段间状态传递有额外性能开销",
+                           "单个过滤器故障可能导致级联失败"],
+            "suggestions": ["建立统一的结构化日志采集与追踪",
+                            "定义标准化的阶段间数据格式减少转换开销",
+                            "为每个过滤器设置独立健康检查和超时熔断"],
+        },
+        "CQRS": {
+            "main_risks": ["读写模型同步复杂度高",
+                           "系统整体复杂度显著增加需额外维护两套模型",
+                           "最终一致性窗口期可能影响用户体验"],
+            "suggestions": ["从单库起逐步拆分读写模型（渐进式CQRS）",
+                            "引入事件溯源或CDC机制保证同步",
+                            "明确标注哪些查询走最终一致性供前端处理"],
+        },
+        "Serverless": {
+            "main_risks": ["云供应商锁定风险",
+                           "冷启动延迟影响用户体验",
+                           "执行时间限制不适合长任务，分布式函数调试困难"],
+            "suggestions": ["抽象云厂商接口避免深度绑定",
+                            "配置预置并发保持函数热启动",
+                            "混合使用容器承载长时任务仅事件触发走Serverless"],
+        },
+        "Space-Based": {
+            "main_risks": ["分布式一致性模型复杂",
+                           "内存成本较高不适合大规模持久化场景",
+                           "内存中数据在持久化前存在丢失风险"],
+            "suggestions": ["配置异步写穿策略保证数据持久化",
+                            "设计数据淘汰与分页策略控制内存占用",
+                            "实现跨节点数据冗余降低单点风险"],
+        },
+        "Client-Server": {
+            "main_risks": ["服务器端可能成为集中式性能瓶颈",
+                           "弹性扩展能力有限不适合极端并发场景",
+                           "客户端升级维护成本高"],
+            "suggestions": ["增加负载均衡与集群化部署提升容量",
+                            "使用CDN卸载静态资源请求减轻服务器压力",
+                            "建立客户端自动更新机制降低运维成本"],
+        },
+    }
+
+    @staticmethod
+    def graph_risks(style_name: str) -> Dict[str, Any]:
+        """JSON 回退: 从 _RISK_MAP 查询风险."""
+        entry = JsonRepository._RISK_MAP.get(style_name)
+        if entry:
+            return {"style": style_name, "main_risks": entry["main_risks"],
+                    "suggestions": entry["suggestions"]}
+        return {"style": style_name, "main_risks": [
+            "架构复杂度与需求规模不匹配的风险",
+            "开发和运维团队对选定架构的熟悉程度",
+            "后续演进中架构腐化的可能性",
+        ], "suggestions": [
+            "持续记录架构决策（ADR）并定期评审",
+            "建立技术债务看板，规划重构窗口",
+            "引入架构适配度度量指标并自动化检查",
+        ]}
+
     # ── 架构组合 ────────────────────────────────────────────────
 
     _COMBO_PATH = DATA_DIR / "architecture_combinations.json"
@@ -243,8 +342,9 @@ def _save_weights(weights: Dict[str, Dict[str, int]]) -> None:
 
 def _extract_features_from_requirement(text: str) -> List[str]:
     text_lower = text.lower()
+    lexicon = _load_lexicon()
     active = []
-    for feature, keywords in _FEEDBACK_LEXICON.items():
+    for feature, keywords in lexicon.items():
         if any(kw in text_lower for kw in keywords):
             active.append(feature)
     return active

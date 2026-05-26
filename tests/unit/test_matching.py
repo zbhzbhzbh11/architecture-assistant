@@ -33,7 +33,7 @@ except ImportError:
 _needs_langgraph = pytest.mark.skipif(not _LANGGRAPH_AVAILABLE, reason="langgraph not installed")
 
 from services.matching_agent.app.main import score_style
-from services.matching_agent.app.graph_matcher import blend_scores, fetch_graph_evidence
+from services.common.matching.graph import blend_scores
 
 
 # ── 规则引擎评分测试 (保持原样) ──

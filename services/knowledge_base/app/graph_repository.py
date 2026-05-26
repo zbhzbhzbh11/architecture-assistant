@@ -214,12 +214,17 @@ class GraphRepository:
     @staticmethod
     def add_feedback(requirement: str, recommended_style: str,
                      user_choice: Optional[str], comment: Optional[str]) -> Optional[Dict[str, Any]]:
-        """保存反馈: Neo4j 为主存储, JSON 为冷备."""
+        """保存反馈: Neo4j 为主存储, JSON 为冷备.
+        Neo4j 不可用时返回 None 触发 _repo() fallback 到 JsonRepository."""
         # 1. Neo4j 存储 (主)
-        total = GraphRepository._neo4j_save_feedback(
-            requirement, recommended_style, user_choice, comment)
+        try:
+            total = GraphRepository._neo4j_save_feedback(
+                requirement, recommended_style, user_choice, comment)
+        except Exception as e:
+            logger.warning(f"Neo4j feedback save failed, will fallback to JSON: {e}")
+            return None
 
-        # 2. JSON 备份 (异步, 失败不阻塞)
+        # 2. JSON 备份
         try:
             from .json_repository import JsonRepository
             JsonRepository.add_feedback(requirement, recommended_style, user_choice, comment)
@@ -231,7 +236,7 @@ class GraphRepository:
             raw = GraphRepository._compute_weights_from_neo4j()
             normalized = _normalize_weights(raw)
             from .json_repository import _save_weights
-            _save_weights(normalized)  # 保存归一化后的值
+            _save_weights(normalized)
             logger.info(f"Learned weights recomputed from Neo4j: {len(raw)} dims, normalized")
         except Exception as e:
             logger.warning(f"Weight recomputation from Neo4j failed: {e}")
@@ -455,6 +460,114 @@ class GraphRepository:
             }
         except Exception as e:
             logger.warning(f"Neo4j graph_match failed: {e}")
+            return None
+
+    # ── 图谱评分 + 风险查询 (Phase 2 双驱动架构) ─────────────────
+
+    @staticmethod
+    def graph_score(features: Dict[str, bool]) -> Optional[Dict[str, Any]]:
+        """一条 Cypher 完成 4 层图评分: HAS_QUALITY + HAS_PENALTY + ScoringRule + LEARNED_FOR."""
+        active_features = [k for k, v in features.items() if v]
+        if not active_features:
+            return None
+
+        try:
+            from neo4j import GraphDatabase
+            driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+            with driver.session() as session:
+                result = session.run("""
+                    MATCH (s:ArchitectureStyle)
+
+                    // Layer 1: HAS_QUALITY 标签匹配 — 每匹配 tag +2
+                    OPTIONAL MATCH (s)-[:HAS_QUALITY]->(q:QualityAttribute)
+                    WHERE q.name IN $active_features
+                    WITH s, count(DISTINCT q) * 2 AS tag_score,
+                           collect(DISTINCT q.name) AS matched_attributes
+
+                    // Layer 4: HAS_PENALTY 惩罚 — Feature→Style 负权重求和
+                    OPTIONAL MATCH (feat:Feature)-[pen:HAS_PENALTY]->(s)
+                    WHERE feat.name IN $active_features
+                    WITH s, tag_score, matched_attributes,
+                           coalesce(sum(pen.weight), 0) AS penalty_score
+
+                    // Layer 3: ScoringRule 特定规则 — 条件全匹配才触发
+                    OPTIONAL MATCH (rule:ScoringRule)-[:APPLIES_TO]->(s)
+                    WHERE all(cond IN rule.required_features WHERE cond IN $active_features)
+                    WITH s, tag_score, matched_attributes, penalty_score,
+                           coalesce(sum(rule.bonus), 0) AS rule_bonus
+
+                    // Layer 2: LEARNED_FOR 学习权重
+                    OPTIONAL MATCH (s)-[lw:LEARNED_FOR]->(qf:QualityAttribute)
+                    WHERE qf.name IN $active_features
+                    WITH s, tag_score, matched_attributes, penalty_score, rule_bonus,
+                           count(DISTINCT lw) AS learning_bonus
+
+                    // 场景 + 风险 + 组合 (证据展示, 不参与评分)
+                    OPTIONAL MATCH (s)-[:SUITABLE_FOR]->(sc:Scenario)
+                    OPTIONAL MATCH (s)-[:HAS_RISK]->(r:Risk)
+                    OPTIONAL MATCH (s)-[:COMPLEMENTS]->(c:ArchitectureStyle)
+                    RETURN s.name AS style,
+                           s.name_zh AS style_zh,
+                           s.is_mainstream AS is_mainstream,
+                           tag_score, penalty_score, rule_bonus, learning_bonus,
+                           matched_attributes,
+                           collect(DISTINCT sc.name) AS matched_scenarios,
+                           collect(DISTINCT r.name) AS related_risks,
+                           collect(DISTINCT c.name) AS combinable_styles
+                    ORDER BY (tag_score + penalty_score + rule_bonus + learning_bonus) DESC
+                """, {"active_features": active_features})
+
+                scored = []
+                for record in result:
+                    graph_score = (record["tag_score"] + record["penalty_score"]
+                                   + record["rule_bonus"] + record["learning_bonus"])
+                    scored.append({
+                        "style": record["style"],
+                        "style_zh": record["style_zh"] or record["style"],
+                        "graph_score": graph_score,
+                        "tag_score": record["tag_score"],
+                        "penalty_score": record["penalty_score"],
+                        "rule_bonus": record["rule_bonus"],
+                        "learning_bonus": record["learning_bonus"],
+                        "is_mainstream": record.get("is_mainstream", False),
+                        "matched_attributes": [a for a in record["matched_attributes"] if a],
+                        "matched_scenarios": [s for s in record["matched_scenarios"] if s],
+                        "related_risks": [r for r in record["related_risks"] if r],
+                        "combinable_styles": [c for c in record["combinable_styles"] if c],
+                    })
+
+            driver.close()
+            if not scored:
+                return None
+            return {"available": True, "active_features": active_features, "scored": scored}
+        except Exception as e:
+            logger.warning(f"Neo4j graph_score failed: {e}")
+            return None
+
+    @staticmethod
+    def graph_risks(style_name: str) -> Optional[Dict[str, Any]]:
+        """查询指定风格的 HAS_RISK 关系, 返回风险与建议."""
+        try:
+            from neo4j import GraphDatabase
+            driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+            with driver.session() as session:
+                result = session.run("""
+                    MATCH (s:ArchitectureStyle {name: $style_name})-[:HAS_RISK]->(r:Risk)
+                    RETURN r.name AS risk, r.suggestion AS suggestion
+                """, {"style_name": style_name})
+                risks = []
+                suggestions = []
+                for record in result:
+                    if record["risk"]:
+                        risks.append(record["risk"])
+                    if record.get("suggestion"):
+                        suggestions.append(record["suggestion"])
+            driver.close()
+            if not risks:
+                return None
+            return {"style": style_name, "main_risks": risks, "suggestions": suggestions}
+        except Exception as e:
+            logger.warning(f"Neo4j graph_risks failed: {e}")
             return None
 
     # ── 图状态 ──────────────────────────────────────────────────

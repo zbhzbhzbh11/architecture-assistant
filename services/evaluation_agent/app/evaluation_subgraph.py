@@ -43,58 +43,23 @@ def _configure(llm_base: str, llm_key: str, llm_model: str, kb_url: str) -> None
 # 纯函数 — 从 main.py 提取, Subgraph 和 do_plan 共用
 # ═══════════════════════════════════════════════════════════════
 
-REASON_LABELS_ZH = {
-    "high_concurrency": "高并发场景处理能力强", "real_time": "实时性需求匹配度高",
-    "reliability": "可靠性保障机制完善", "scalability": "可扩展性强，便于后续扩展",
-    "complex_business": "适合复杂业务逻辑", "strict_consistency": "满足强一致性要求",
-    "deployment_constraint": "契合部署约束条件", "data_intensive": "适合数据密集型处理",
-    "team_size_large": "支持多团队协作开发", "security": "安全性保障完备",
-    "llm_vote_bonus": "大模型辅助判断确认",
-}
-
-STYLE_RISK_MAP: Dict[str, Dict[str, List[str]]] = {
-    "Event-Driven Architecture": {
-        "main_risks": ["事件溯源实现复杂度高，调试困难",
-                       "事件一致性设计难度大，需额外处理幂等与乱序",
-                       "分布式链路追踪和监控成本较高"],
-        "suggestions": ["引入消息队列（如Kafka/RabbitMQ）并设置死信队列",
-                        "建立事件Schema版本管理，保证向前兼容",
-                        "部署分布式追踪系统（如Jaeger/Zipkin）"],
-    },
-    "Microservices": {
-        "main_risks": ["分布式系统复杂度高，事务一致性难保障",
-                       "服务间通信延迟和网络故障风险增大",
-                       "运维成本高，需完善CI/CD和容器编排"],
-        "suggestions": ["采用Saga模式处理分布式事务",
-                        "引入服务网格（如Istio）管理服务间通信",
-                        "建立统一的API网关和认证授权中心"],
-    },
-    "Layered Architecture": {
-        "main_risks": ["跨层调用带来性能开销，高并发场景可能成为瓶颈",
-                       "层级耦合可能导致变更影响面大",
-                       "横向扩展能力有限，不适合极端流量场景"],
-        "suggestions": ["严格遵循单向依赖，避免跨层直接调用",
-                        "核心业务层可结合CQRS读写分离缓解性能压力",
-                        "通过水平扩展+负载均衡提升吞吐量"],
-    },
-}
-
-
 def _localize_reasons(reasons: List[str]) -> List[str]:
-    zh: List[str] = []
-    for r in reasons:
-        for eng_key, zh_label in REASON_LABELS_ZH.items():
-            if eng_key in r:
-                zh.append(zh_label)
-                break
-        else:
-            zh.append(r)
-    return list(dict.fromkeys(zh))
+    """去重并保留顺序 — 所有理由已为中文, 无需翻译."""
+    return list(dict.fromkeys(reasons))
 
 
-def _dynamic_risks(style_name: str, candidates: List[Dict[str, Any]] | None = None) -> Dict[str, List[str]]:
-    if style_name in STYLE_RISK_MAP:
-        return STYLE_RISK_MAP[style_name]
+async def _dynamic_risks(style_name: str) -> Dict[str, List[str]]:
+    """从知识图谱查询风格风险 (双驱动架构: Neo4j 为权威源, JSON 为 fallback)."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0, trust_env=False) as client:
+            resp = await client.get(f"{KNOWLEDGE_BASE_URL}/graph/risks/{style_name}")
+            resp.raise_for_status()
+            data = resp.json()
+            if data.get("main_risks"):
+                return {"main_risks": data["main_risks"], "suggestions": data["suggestions"]}
+    except Exception as e:
+        logger.warning(f"[subgraph] Graph risk query failed, using fallback: {e}")
+    # 通用 fallback (Neo4j 和 JSON 都不可用)
     return {
         "main_risks": ["架构复杂度与需求规模不匹配的风险",
                        "开发和运维团队对选定架构的熟悉程度",
@@ -109,7 +74,17 @@ def _dynamic_risks(style_name: str, candidates: List[Dict[str, Any]] | None = No
 # LLM 调用 — 异步函数, 被子节点调用
 # ═══════════════════════════════════════════════════════════════
 
-async def llm_vote_style(requirement: str, candidates: List[Dict[str, Any]]) -> str | None:
+_FEAT_LABELS_ZH_VOTE = {
+    "high_concurrency": "高并发", "real_time": "实时性", "reliability": "可靠性",
+    "scalability": "可扩展性", "complex_business": "复杂业务", "strict_consistency": "强一致性",
+    "deployment_constraint": "部署约束", "data_intensive": "数据密集型",
+    "team_size_large": "多团队协作", "security": "安全性",
+    "simple_crud": "极简业务", "resource_constrained": "资源受限",
+}
+
+
+async def llm_vote_style(requirement: str, candidates: List[Dict[str, Any]],
+                         features: Dict[str, bool] | None = None) -> str | None:
     if not (LLM_API_BASE and LLM_API_KEY and LLM_MODEL) or not candidates:
         return None
     style_names = [c.get("style", "") for c in candidates if c.get("style")]
@@ -117,10 +92,33 @@ async def llm_vote_style(requirement: str, candidates: List[Dict[str, Any]]) -> 
         return None
 
     logger.info(f"[subgraph] LLM vote among {style_names}")
+
+    # 构建特征维度上下文
+    feature_block = ""
+    if features:
+        feat_lines = []
+        for k, zh in _FEAT_LABELS_ZH_VOTE.items():
+            val = "是" if features.get(k) else "否"
+            feat_lines.append(f"  {zh}: {val}")
+        feature_block = "特征维度:\n" + "\n".join(feat_lines) + "\n\n"
+
+    # 构建候选详情 (含中文名、评分、理由)
+    candidate_lines = []
+    for c in candidates:
+        name = c.get("style", "")
+        zh = c.get("style_zh", name)
+        score = c.get("score", 0)
+        reasons = c.get("reasons", [])
+        reasons_brief = "; ".join(reasons[:2]) if reasons else ""
+        candidate_lines.append(f"  {name} ({zh}) | 规则引擎评分={score} | {reasons_brief}")
+
     prompt = (
-        "Select one best architecture style from given candidates. "
-        "Return only the exact style name, no extra words.\n"
-        f"Requirement: {requirement}\nCandidates: {style_names}\n"
+        "Select one best architecture style from the given candidates. "
+        "Return only the exact style name, no extra words.\n\n"
+        f"需求描述: {requirement}\n\n"
+        f"{feature_block}"
+        f"候选架构 (含规则引擎评分):\n"
+        + "\n".join(candidate_lines) + "\n"
     )
     headers = {"Authorization": f"Bearer {LLM_API_KEY}", "Content-Type": "application/json"}
     body = {"model": LLM_MODEL, "messages": [
@@ -181,8 +179,8 @@ async def llm_summary(requirement: str, candidates: List[Dict[str, Any]], best_s
 
 def _fallback_summary(best_style: str, candidates: List[Dict[str, Any]]) -> str:
     alt = [c.get("style") for c in candidates if c.get("style") != best_style][:2]
-    best_pros = next((c.get("pros", []) for c in candidates if c.get("style") == best_style), [])
-    best_cons = next((c.get("cons", []) for c in candidates if c.get("style") == best_style), [])
+    best_pros = next((c.get("pros_zh", c.get("pros", [])) for c in candidates if c.get("style") == best_style), [])
+    best_cons = next((c.get("cons_zh", c.get("cons", [])) for c in candidates if c.get("style") == best_style), [])
     lines = [f"1. 推荐架构：{best_style}（核心推荐）"]
     if alt:
         lines.append(f"   备选架构：{'、'.join(alt)}")
@@ -217,7 +215,7 @@ async def _vote_node(state: Dict[str, Any]) -> Dict[str, Any]:
     t0 = time.perf_counter()
     requirement = state.get("requirement", "")
     ranked = state.get("ranked", [])
-    vote = await llm_vote_style(requirement, ranked)
+    vote = await llm_vote_style(requirement, ranked, state.get("features", {}))
     elapsed = round((time.perf_counter() - t0) * 1000)
     logger.info(f"[subgraph] vote_node: {vote}, {elapsed}ms")
     return {"llm_vote": vote, "_trace_vote": elapsed}
@@ -271,7 +269,7 @@ async def _merge_node(state: Dict[str, Any]) -> Dict[str, Any]:
             "topology_mermaid": item.get("topology_mermaid", ""),
         })
 
-    risk_info = _dynamic_risks(best_style)
+    risk_info = await _dynamic_risks(best_style)
 
     # 组合推荐
     recommended_combination = {}

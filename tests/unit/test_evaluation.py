@@ -291,25 +291,41 @@ def test_score_style_layered():
 
 
 def test_localize_reasons():
-    """[_localize_reasons] 英文规则理由应转为中文."""
+    """[_localize_reasons] 中文理由应去重并保持顺序."""
     from services.evaluation_agent.app.main import _localize_reasons
 
     raw = [
-        "matches feature: high_concurrency",
-        "extra rule: high concurrency favors event-driven",
-        "unknown_reason_xyz",
+        "特征匹配: 高并发",
+        "特征匹配: 高并发",  # 重复项
+        "特定规则: 高并发场景倾向事件驱动架构",
+        "反向信号: 极简业务 (-3)",
     ]
     result = _localize_reasons(raw)
-    assert "高并发场景处理能力强" in result
-    # 未知理由保留原文
-    assert "unknown_reason_xyz" in result
+    assert len(result) == 3, f"应去重 (4条含1条重复), 实际 {len(result)}: {result}"
+    assert result[0] == "特征匹配: 高并发"
+    assert result[1] == "特定规则: 高并发场景倾向事件驱动架构"
+    assert result[2] == "反向信号: 极简业务 (-3)"
 
 
 def test_dynamic_risks_known_style():
-    """[_dynamic_risks] 已知风格应返回针对性风险."""
+    """[_dynamic_risks] 已知风格应返回针对性风险 (异步调用)."""
+    import asyncio
     from services.evaluation_agent.app.main import _dynamic_risks
 
-    risks = _dynamic_risks("Event-Driven Architecture", [])
+    # Mock httpx 调用 /graph/risks 返回已知风格风险
+    with patch("services.evaluation_agent.app.main.httpx.AsyncClient") as mock_client:
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.json.return_value = {
+            "main_risks": ["事件溯源实现复杂度高，调试困难"],
+            "suggestions": ["引入消息队列（如Kafka/RabbitMQ）并设置死信队列"],
+        }
+        mock_instance = AsyncMock()
+        mock_instance.__aenter__.return_value.get.return_value = mock_resp
+        mock_client.return_value = mock_instance
+
+        risks = asyncio.run(_dynamic_risks("Event-Driven Architecture"))
+
     assert "main_risks" in risks
     assert "suggestions" in risks
     assert any("事件" in r for r in risks["main_risks"]), "事件驱动应有针对性风险描述"
@@ -317,10 +333,18 @@ def test_dynamic_risks_known_style():
 
 
 def test_dynamic_risks_unknown_style():
-    """[_dynamic_risks] 未知风格应返回通用风险."""
+    """[_dynamic_risks] 未知风格应返回通用风险 (图不可用时 fallback)."""
+    import asyncio
     from services.evaluation_agent.app.main import _dynamic_risks
 
-    risks = _dynamic_risks("Unknown Style XYZ", [])
+    # Mock httpx 抛出异常 → 触发通用 fallback
+    with patch("services.evaluation_agent.app.main.httpx.AsyncClient") as mock_client:
+        mock_instance = AsyncMock()
+        mock_instance.__aenter__.return_value.get.side_effect = Exception("Neo4j unavailable")
+        mock_client.return_value = mock_instance
+
+        risks = asyncio.run(_dynamic_risks("Unknown Style XYZ"))
+
     assert len(risks["main_risks"]) > 0
     assert len(risks["suggestions"]) > 0
 
@@ -525,9 +549,9 @@ def test_fallback_summary_format_with_three_styles():
     assert "2. 推荐理由" in result
     assert "3. 优缺点分析" in result
     assert "√ 优点" in result
-    assert "high throughput" in result or "loose coupling" in result
+    assert "高吞吐量" in result or "松耦合" in result
     assert "× 缺点" in result
-    assert "hard tracing" in result or "eventual consistency complexity" in result
+    assert "调试困难" in result or "最终一致性复杂" in result
 
 
 # ── llm_vote_style 异常路径 ─────────────────────────────────────

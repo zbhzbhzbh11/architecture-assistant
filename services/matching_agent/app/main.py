@@ -1,9 +1,9 @@
-"""Matching Agent — LangGraph Subgraph 编排的架构匹配服务.
+"""Matching Agent — 双驱动并行架构 (规则引擎 + 图谱引擎).
 
-匹配流程由 3 子节点 Subgraph 驱动:
-  rule_score → graph_blend → combo_rank
+匹配流程由 4 子节点 Subgraph 驱动:
+  START → Send(rule_score ∥ graph_score) → blend → combo_rank → END
 
-纯评分函数 (score_style, blend_scores, rank_combinations) 从
+纯评分函数 (score_style, rank_combinations) 从
 common.matching 导入, Subgraph 节点和 HTTP 端点共用同一套逻辑.
 """
 
@@ -15,8 +15,7 @@ import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from common.matching import score_style, select_top3, blend_scores, rank_combinations
-from .graph_matcher import fetch_graph_evidence
+from common.matching import score_style, select_top3, rank_combinations
 from .combo_matcher import fetch_combinations
 from .matching_subgraph import build_matching_subgraph
 

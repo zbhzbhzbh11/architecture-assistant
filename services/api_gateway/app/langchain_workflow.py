@@ -94,8 +94,8 @@ async def _match_node(state: ArchitectureWorkflowState) -> Dict[str, Any]:
     输出:  state["candidates"]             候选架构列表 (3个,按分排序)
            state["combination_candidates"] 组合架构推荐 (最多3个)
 
-    matching-agent 内部会向 knowledge-base 拉取全部风格、学习权重、组合定义,
-    然后执行 score_style() 评分 + blend_scores() 图谱融合.
+    matching-agent 内部并行执行: 规则引擎评分 (score_style) + 图谱引擎评分 (POST /graph/score),
+    在 blend 节点加权融合后选出 Top 3.
     """
     t0 = time.perf_counter()
     features = state.get("extracted_features", {})
