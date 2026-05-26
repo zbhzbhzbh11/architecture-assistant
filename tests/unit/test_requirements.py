@@ -92,7 +92,14 @@ def test_few_shot_prompt_json_constraint():
     assert "不要输出其他内容" in prompt
 
 
-def test_few_shot_has_six_examples():
-    """验证 few-shot 模块恰含 6 个示例."""
-    from common.prompts.requirements_few_shot import EXAMPLES
-    assert len(EXAMPLES) == 6
+def test_few_shot_has_twelve_examples():
+    """验证 few-shot 模块恰含 12 个示例 (覆盖全部 12 个维度)."""
+    from common.prompts.requirements_few_shot import EXAMPLES, FEATURE_LABELS_ZH
+    assert len(EXAMPLES) == 12
+    # 验证每个维度至少有一个正面示例
+    covered = set()
+    for _, labels in EXAMPLES:
+        for k, v in labels.items():
+            if v:
+                covered.add(k)
+    assert covered == set(FEATURE_LABELS_ZH.keys()), f"Missing: {set(FEATURE_LABELS_ZH.keys()) - covered}"

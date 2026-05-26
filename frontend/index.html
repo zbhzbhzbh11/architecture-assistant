@@ -17,11 +17,19 @@
     <button id="submit">开始推荐</button>
 
     <section id="result" class="hidden">
-      <!-- 1. 推荐摘要 -->
-      <h2>推荐结果</h2>
-      <div id="summary" class="summary"></div>
+      <!-- ═══ 骨架屏（加载中） ═══ -->
+      <div id="skeleton" class="skeleton">
+        <div class="sk-card"><div class="sk-line w80"></div><div class="sk-line w60"></div><div class="sk-line w90"></div></div>
+        <div class="sk-card"><div class="sk-line w70"></div><div class="sk-line w50"></div></div>
+        <div class="sk-row"><div class="sk-box"></div><div class="sk-box"></div><div class="sk-box"></div></div>
+        <div id="skeleton-phase" class="sk-phase">正在提取需求特征...</div>
+      </div>
 
-      <!-- 2. 状态栏: workflow engine + 缓存 -->
+      <!-- ═══ 加载完成内容 ═══ -->
+      <div id="result-content" class="hidden">
+
+      <!-- 1. 推荐摘要 — 第一屏核心 -->
+      <h2>推荐结果</h2>
       <div class="status-bar">
         <div id="cache-status"></div>
         <div id="workflow-status"></div>
@@ -29,67 +37,76 @@
           <button id="cache-clear" class="fb-btn fb-clear">清缓存重试</button>
         </div>
       </div>
+      <div id="summary" class="summary"></div>
 
-      <!-- 3. 识别特征 -->
-      <h3>识别特征</h3>
-      <div id="features-card" class="features-card"></div>
-
-      <!-- 4. 工作流追踪 -->
-      <h3>工作流追踪</h3>
-      <div id="workflow-trace" class="workflow-trace"></div>
-
-      <!-- 5. 架构对比矩阵 -->
-      <h3>架构对比矩阵</h3>
-      <table id="matrix">
-        <thead><tr><th>推荐</th><th>架构风格</th><th>得分</th><th>关键理由</th><th>优点</th><th>缺点</th></tr></thead>
-        <tbody></tbody>
-      </table>
-
-      <!-- 6. 推荐拓扑图 -->
-      <h3>推荐拓扑图</h3>
-      <div id="topology"></div>
-
-      <!-- 7. 知识图谱证据 -->
-      <h3>知识图谱证据</h3>
-      <div id="graph-evidence" class="graph-evidence"></div>
-
-      <!-- 8. 组合架构推荐 -->
-      <h3>组合架构推荐</h3>
-      <div id="combo-section" class="combo-section"></div>
-
-      <!-- 9. 架构重构建议 -->
-      <h3>架构重构建议</h3>
-      <div id="refactor-section" class="refactor-section"></div>
-
-      <!-- 10. 知识进化 — 用户反馈与权重 -->
-      <h3>知识进化 — 反馈与权重</h3>
-      <div id="feedback-section" class="feedback-section">
-        <div id="feedback-prompt" class="hidden">
-          <span class="feedback-label">这个推荐准确吗？</span>
-          <button id="feedback-confirm" class="fb-btn fb-confirm">确认 👍</button>
-          <button id="feedback-refine" class="fb-btn fb-refine">补充反馈重新推荐</button>
-          <div id="feedback-refine-box" class="hidden" style="margin-top:8px">
-            <textarea id="feedback-refine-text" rows="3" placeholder="输入补充需求，例如：还需要支持视频通话功能、对数据一致性要求很高..."></textarea>
-            <div style="margin-top:6px">
-              <button id="feedback-refine-submit" class="fb-btn fb-confirm">重新推荐</button>
-              <button id="feedback-refine-cancel" class="fb-btn fb-cancel">取消</button>
+      <!-- 证据详情（默认展开） -->
+      <details class="section-group" open>
+        <summary><h2>证据详情</h2></summary>
+        <div class="section-body">
+          <div class="two-col">
+            <div>
+              <h3>识别特征与倾向</h3>
+              <div id="features-card" class="features-card"></div>
+              <div id="arch-inclination" class="arch-inclination hidden"></div>
+            </div>
+            <div>
+              <h3>推荐拓扑图</h3>
+              <div id="topology"></div>
             </div>
           </div>
-          <div id="feedback-msg"></div>
+          <h3>架构对比矩阵</h3>
+          <table id="matrix">
+            <thead><tr><th>推荐</th><th>架构风格</th><th>得分</th><th>关键理由</th><th>优点</th><th>缺点</th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <div class="matrix-cards" id="matrix-cards"></div>
+          <h3>特征影响分析</h3>
+          <div id="impact-table" class="impact-table"></div>
         </div>
-        <div id="weights-display" class="weights-display"></div>
-        <div style="margin-top:8px">
-          <button id="weights-refresh" class="fb-btn fb-refresh">刷新权重</button>
-          <button id="weights-reset" class="fb-btn fb-reset">重置学习权重</button>
+      </details>
+
+      <!-- 更多详情（默认收起） -->
+      <details class="section-group">
+        <summary><h2>更多详情</h2></summary>
+        <div class="section-body">
+          <h3>组合架构推荐</h3>
+          <div id="combo-section" class="combo-section"></div>
+          <h3>架构重构建议</h3>
+          <div id="refactor-section" class="refactor-section"></div>
+          <h3>架构决策记录 (ADR)</h3>
+          <div id="adr-info" class="adr-info"></div>
+
+          <h3>知识进化 — 反馈与权重</h3>
+          <div id="feedback-section" class="feedback-section">
+            <div id="feedback-prompt" class="hidden">
+              <span class="feedback-label">这个推荐准确吗？</span>
+              <button id="feedback-confirm" class="fb-btn fb-confirm">确认</button>
+              <button id="feedback-refine" class="fb-btn fb-refine">补充反馈重新推荐</button>
+              <div id="feedback-refine-box" class="hidden" style="margin-top:8px">
+                <textarea id="feedback-refine-text" rows="3" placeholder="输入补充需求..."></textarea>
+                <div style="margin-top:6px">
+                  <button id="feedback-refine-submit" class="fb-btn fb-confirm">重新推荐</button>
+                  <button id="feedback-refine-cancel" class="fb-btn fb-cancel">取消</button>
+                </div>
+              </div>
+              <div id="feedback-msg"></div>
+            </div>
+            <div id="weights-display" class="weights-display"></div>
+            <div style="margin-top:8px">
+              <button id="weights-refresh" class="fb-btn fb-refresh">刷新权重</button>
+              <button id="weights-reset" class="fb-btn fb-reset">重置学习权重</button>
+            </div>
+          </div>
         </div>
-      </div>
+      </details>
 
-      <!-- 12. ADR 决策溯源 -->
-      <h3>架构决策记录 (ADR)</h3>
-      <div id="adr-info" class="adr-info"></div>
+      <!-- 工作流追踪 — 始终可见单行 -->
+      <div class="trace-inline" id="workflow-trace"></div>
 
-      <!-- 13. 原始响应 -->
-      <details><summary>原始响应 JSON</summary>
+      </div><!-- end result-content -->
+
+      <!-- 原始响应 -->
+      <details style="margin-top:12px"><summary>原始响应 JSON</summary>
       <pre id="output"></pre>
       </details>
     </section>
@@ -112,7 +129,21 @@
     const FEAT_LABELS = {
       high_concurrency:'高并发',real_time:'实时性',reliability:'可靠性',scalability:'可扩展性',
       complex_business:'复杂业务',strict_consistency:'强一致性',deployment_constraint:'部署约束',
-      data_intensive:'数据密集型',team_size_large:'多团队',security:'安全性'
+      data_intensive:'数据密集型',team_size_large:'多团队',security:'安全性',simple_crud:'极简业务',resource_constrained:'资源受限'
+    };
+    const SKELETON_PHASES = ['正在提取需求特征...', '正在匹配架构风格...', '正在评估决策...'];
+    function setSkeletonPhase(idx) { const p = $('skeleton-phase'); if (p) p.textContent = SKELETON_PHASES[idx] || ''; }
+    const STYLE_DEFS = {
+      'Layered Architecture':       {zh:'分层架构', tags:['complex_business','strict_consistency','security','simple_crud'], penalty:{high_concurrency:-2,real_time:-2,data_intensive:-2}},
+      'Microservices':              {zh:'微服务架构', tags:['scalability','team_size_large','reliability','high_concurrency','strict_consistency'], penalty:{simple_crud:-3,resource_constrained:-4}},
+      'Event-Driven Architecture':  {zh:'事件驱动架构', tags:['high_concurrency','real_time','scalability','data_intensive'], penalty:{simple_crud:-3,resource_constrained:-3}},
+      'SOA':                        {zh:'面向服务架构', tags:['complex_business','team_size_large','security'], penalty:{}},
+      'Hexagonal Architecture':     {zh:'六边形架构', tags:['complex_business','strict_consistency','reliability'], penalty:{}},
+      'Pipeline-Filter':            {zh:'管道-过滤器架构', tags:['data_intensive','scalability','real_time'], penalty:{}},
+      'CQRS':                       {zh:'命令查询职责分离', tags:['high_concurrency','strict_consistency','scalability','data_intensive'], penalty:{simple_crud:-2,resource_constrained:-3}},
+      'Serverless':                 {zh:'无服务器架构', tags:['scalability','real_time'], penalty:{}},
+      'Space-Based':                {zh:'空间架构', tags:['high_concurrency','reliability'], penalty:{resource_constrained:-4}},
+      'Client-Server':              {zh:'客户端-服务器架构', tags:['deployment_constraint','strict_consistency','simple_crud'], penalty:{high_concurrency:-4,scalability:-3,team_size_large:-4}},
     };
 
     function buildTopology(matrixRows, recommendedStyle) {
@@ -139,14 +170,135 @@
       });
     }
 
+
+    function renderMatrixCards(rows) {
+      const div = $('matrix-cards');
+      div.innerHTML = '';
+      rows.forEach((row, i) => {
+        const tag = i === 0 ? '<span class="combo-badge">核心推荐</span>' : '<span class="cache-badge">备选</span>';
+        div.innerHTML += '<div class="mcard">' +
+          '<div class="mcard-head">' + tag + ' <strong>' + safeStr(row.style_zh, row.style || '-') + '</strong>' +
+          ' <span class="mscore">得分 ' + safe(row.score, '-') + '</span></div>' +
+          '<div class="mcard-body">' +
+          '<div><b>理由</b> ' + (safeArr(row.key_reasons).join('；') || '-') + '</div>' +
+          '<div><b>优点</b> ' + (safeArr(row.pros_zh).length ? safeArr(row.pros_zh).join('；') : safeArr(row.pros).join('；') || '-') + '</div>' +
+          '<div><b>缺点</b> ' + (safeArr(row.cons_zh).length ? safeArr(row.cons_zh).join('；') : safeArr(row.cons).join('；') || '-') + '</div>' +
+          '</div></div>';
+      });
+    }
+
     function renderFeatures(feats, featHits) {
       const div = $('features-card');
       const active = Object.entries(feats || {}).filter(([,v]) => v);
-      if (!active.length) { div.innerHTML = '<span class="feat-tag dim">未识别到明显特征</span>'; return; }
+      if (!active.length) {
+        div.innerHTML = '<span class="feat-empty">LLM 分析：<strong>未检测到明显特征</strong> (需求可能为简单场景，倾向轻量架构)</span>';
+        return;
+      }
       div.innerHTML = active.map(([k]) => {
-        const hits = safeArr(featHits && featHits[k]).join(' / ');
-        return '<span class="feat-tag">' + (FEAT_LABELS[k] || k) + (hits ? ' <small>(' + hits + ')</small>' : '') + '</span>';
+        const rawHits = safeArr(featHits && featHits[k]);
+        const kwHits = rawHits.filter(h => h !== 'llm_identified');
+        const llmOnly = rawHits.length === 1 && rawHits[0] === 'llm_identified';
+        // Build source indicators
+        const sources = [];
+        if (kwHits.length) sources.push('<span class="feat-source dict">词典: ' + kwHits.join('/') + '</span>');
+        if (llmOnly) sources.push('<span class="feat-source llm">LLM 识别</span>');
+        else if (rawHits.includes('llm_identified')) sources.push('<span class="feat-source llm">LLM 确认</span>');
+        return '<span class="feat-tag">' + (FEAT_LABELS[k] || k) + ' ' + sources.join(' ') + '</span>';
       }).join(' ');
+    }
+
+    function renderImpactTable(data) {
+      const div = $('impact-table');
+      const features = data?.extracted_features || {};
+      const rows = safeArr(data?.final_report?.comparison_matrix);
+      const activeFeats = Object.entries(features).filter(([,v]) => v).map(([k]) => k);
+      if (!activeFeats.length) { div.innerHTML = '<span class="dim-text">无活跃特征</span>'; return; }
+
+      // Top3 ranking
+      const top3Rank = {};
+      rows.forEach((r, i) => { top3Rank[r.style] = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'; });
+
+      // Filter styles: only show those affected by at least one active feature
+      const affected = new Set();
+      activeFeats.forEach(feat => {
+        Object.entries(STYLE_DEFS).forEach(([style, def]) => {
+          if (def.tags.includes(feat) || (def.penalty && def.penalty[feat])) {
+            affected.add(style);
+          }
+        });
+      });
+      // Always include Top3 even if not affected by any feature (0分候补)
+      rows.forEach(r => affected.add(r.style));
+
+      // Column order: Top3 first, then remaining affected alphabetically
+      const top3Styles = rows.map(r => r.style);
+      const restStyles = [...affected].filter(s => !top3Styles.includes(s)).sort();
+      const colOrder = [...top3Styles, ...restStyles];
+
+      let html = '<table class="im-table"><thead><tr><th>特征 \\ 风格</th>';
+      colOrder.forEach(style => {
+        const def = STYLE_DEFS[style] || {zh:style};
+        const rank = top3Rank[style] || '';
+        const score = rows.find(r => r.style === style);
+        const scoreStr = score ? score.score + '分' : '';
+        html += '<th>' + rank + def.zh + (scoreStr ? '<br/><small>' + scoreStr + '</small>' : '') + '</th>';
+      });
+      html += '</tr></thead><tbody>';
+
+      // Feature rows
+      activeFeats.forEach(feat => {
+        html += '<tr><td><span class="feat-tag small">' + (FEAT_LABELS[feat] || feat) + '</span></td>';
+        colOrder.forEach(style => {
+          const def = STYLE_DEFS[style];
+          if (!def) { html += '<td><span class="im-zero">&mdash;</span></td>'; return; }
+          const tags = def.tags || [];
+          const penalty = def.penalty || {};
+          if (tags.includes(feat)) {
+            html += '<td><span class="im-plus">+2</span></td>';
+          } else if (penalty[feat]) {
+            html += '<td><span class="im-minus">' + penalty[feat] + '</span></td>';
+          } else {
+            html += '<td><span class="im-zero">&mdash;</span></td>';
+          }
+        });
+        html += '</tr>';
+      });
+
+      // LLM vote row
+      html += '<tr class="im-vote"><td>LLM 投票</td>';
+      colOrder.forEach(style => {
+        const row = rows.find(r => r.style === style);
+        const reasons = safeArr(row ? row.key_reasons : []);
+        const gotVote = reasons.some(r => r.includes('LLM投票') || r.includes('大模型') || r.includes('llm_vote'));
+        html += '<td>' + (gotVote ? '<span class="im-plus">+1</span>' : '<span class="im-zero">&mdash;</span>') + '</td>';
+      });
+      html += '</tr>';
+
+      html += '</tbody></table>';
+      div.innerHTML = html;
+    }
+
+    function renderArchInclination(data) {
+      const div = $('arch-inclination');
+      const arch = data?.arch_inclination || {};
+      if (!arch || Object.keys(arch).length === 0) { div.classList.add('hidden'); return; }
+      div.classList.remove('hidden');
+
+      const hintMap = { low: '低', medium: '中', high: '高' };
+      const hint = arch.complexity_hint ? hintMap[arch.complexity_hint] || arch.complexity_hint : null;
+      const avoid = safeArr(arch.arch_avoid);
+      const prefer = safeArr(arch.arch_prefer);
+      const reason = safeStr(arch.reason, '');
+
+      let html = '<div class="arch-card">';
+      html += '<span class="arch-label">LLM 架构倾向</span>';
+      if (hint) html += ' <span class="arch-hint">复杂度: ' + hint + '</span>';
+      html += '<div class="arch-lines">';
+      if (avoid.length) html += '<div class="arch-line avoid"><b>应避免</b> ' + avoid.join(' / ') + '</div>';
+      if (prefer.length) html += '<div class="arch-line prefer"><b>倾向</b> ' + prefer.join(' / ') + '</div>';
+      if (reason) html += '<div class="arch-line reason">' + reason + '</div>';
+      html += '</div></div>';
+      div.innerHTML = html;
     }
 
     function renderWorkflowTrace(data) {
@@ -155,42 +307,15 @@
       const engine = safeStr(data?.workflow_engine, 'manual');
       $('workflow-status').innerHTML = '<span class="cache-badge">编排引擎: ' + engine + '</span>';
 
-      if (!trace.length) { div.innerHTML = '<span class="dim-text">无追踪数据</span>'; return; }
+      if (!trace.length) { div.innerHTML = ''; return; }
       const total = trace.reduce((s, t) => s + safe(t.elapsed_ms, 0), 0);
-      let html = '<div class="trace-bar">';
-      trace.forEach(t => {
-        const pct = total > 0 ? Math.round(safe(t.elapsed_ms, 0) / total * 100) : 33;
-        const color = t.status === 'error' ? '#ef4444' : '#0d9488';
-        html += '<div class="trace-step" style="flex:' + Math.max(pct, 15) + '">';
-        html += '<div class="trace-name">' + safeStr(t.node, '?') + '</div>';
-        html += '<div class="trace-bar-inner" style="width:100%;height:6px;background:' + color + ';border-radius:3px"></div>';
-        html += '<div class="trace-ms">' + safe(t.elapsed_ms, 0) + 'ms</div>';
-        html += '</div>';
-      });
-      html += '</div>';
-      div.innerHTML = html;
-    }
-
-    function renderGraphEvidence(data) {
-      const div = $('graph-evidence');
-      const cands = safeArr(data?.candidates);
-      const best = cands.find(c => safeArr(c.matched_attributes).length || safeArr(c.graph_reasons).length);
-      if (!best) { div.innerHTML = '<span class="dim-text">无图谱证据</span>'; return; }
-
-      let html = '<div class="graph-card">';
-      const attrs = safeArr(best.matched_attributes);
-      const scenarios = safeArr(best.matched_scenarios);
-      const reasons = safeArr(best.graph_reasons);
-      const risks = safeArr(best.related_risks);
-      const combos = safeArr(best.combinable_styles);
-
-      if (attrs.length) html += '<div class="graph-row"><b>匹配属性:</b> ' + attrs.map(a => '<span class="feat-tag small">' + (FEAT_LABELS[a] || a) + '</span>').join(' ') + '</div>';
-      if (scenarios.length) html += '<div class="graph-row"><b>适用场景:</b> ' + scenarios.join('、') + '</div>';
-      if (risks.length) html += '<div class="graph-row"><b>关联风险:</b> ' + risks.slice(0, 2).join('；') + '</div>';
-      if (combos.length) html += '<div class="graph-row"><b>可组合:</b> ' + combos.join('、') + '</div>';
-      if (best.graph_score) html += '<div class="graph-row"><b>图谱得分:</b> +' + best.graph_score + '</div>';
-      html += '</div>';
-      div.innerHTML = html;
+      div.innerHTML = trace.map(t => {
+        const ok = t.status !== 'error';
+        const ms = safe(t.elapsed_ms, 0);
+        return '<span class="trace-dot" style="color:' + (ok ? '#0d9488' : '#ef4444') + '">' +
+          safeStr(t.node, '?') + ' ' + ms + 'ms</span>';
+      }).join(' <span class="trace-arrow">&rarr;</span>') +
+      ' <span class="trace-dot dim">共 ' + total + 'ms</span>';
     }
 
     function renderCombo(data) {
@@ -262,16 +387,19 @@
       try {
         const r = await fetch(KB_URL + '/feedback/weights');
         const d = await r.json();
-        const w = d.weights || {};
-        const entries = Object.entries(w).filter(([,m]) => Object.keys(m).length);
+        const normW = d.weights || {};      // 归一化值 (0~1) — score_style 使用
+        const rawW = d.raw_weights || normW; // 原始衰减计数 — 前端展示, 兼容旧数据
+        const entries = Object.entries(normW).filter(([,m]) => Object.keys(m).length);
         const div = $('weights-display');
         if (!entries.length) { div.innerHTML = '<span class="dim-text">暂无学习权重</span>'; return; }
-        let html = '<table class="weights-table"><thead><tr><th>特征维度</th><th>风格</th><th>确认次数</th></tr></thead><tbody>';
+        let html = '<table class="weights-table"><thead><tr><th>特征维度</th><th>风格</th><th>原始计数</th><th>归一化值</th></tr></thead><tbody>';
         entries.forEach(([feat, map]) => {
-          Object.entries(map).forEach(([style, count]) => {
-            const active = count >= 2;
+          Object.entries(map).forEach(([style, score]) => {
+            const rawCount = (rawW[feat] && rawW[feat][style]) ? rawW[feat][style].toFixed(1) : '-';
+            const active = score >= 0.3;
             html += '<tr><td>' + (FEAT_LABELS[feat] || feat) + '</td><td>' + style + '</td>' +
-              '<td style="color:' + (active ? '#0d9488' : '#9ca3af') + '">' + count + (active ? ' ✓生效' : ' (待确认)') + '</td></tr>';
+              '<td>' + rawCount + '</td>' +
+              '<td style="color:' + (active ? '#0d9488' : '#9ca3af') + '">' + score.toFixed(2) + (active ? ' ✓生效' : '') + '</td></tr>';
           });
         });
         html += '</tbody></table>';
@@ -371,12 +499,23 @@
 
     btn.addEventListener('click', async () => {
       btn.disabled = true; btn.innerText = '分析中...';
-      // 重置反馈状态（新请求开始）
       _feedbackLocked = false;
       showFeedbackPrompt(false);
       $('feedback-confirm').disabled = false;
       $('feedback-confirm').style.opacity = '1';
       $('feedback-msg').innerHTML = '';
+
+      // Show skeleton
+      $('skeleton').classList.remove('hidden');
+      $('result-content').classList.add('hidden');
+      result.classList.remove('hidden');
+      setSkeletonPhase(0);
+
+      const phaseTimer = setInterval(() => {
+        const el = $('skeleton-phase');
+        if (el && el.textContent === SKELETON_PHASES[2]) el.textContent = '正在生成报告...';
+      }, 2500);
+
       try {
         const resp = await fetch('http://localhost:8000/api/v1/recommend', {
           method: 'POST',
@@ -384,70 +523,63 @@
           body: JSON.stringify({ requirement: input.value })
         });
         const data = await resp.json();
+        clearInterval(phaseTimer);
         const fr = data?.final_report || {};
 
-        // 摘要
-        const recZh = safeStr(fr.recommended_style_zh, fr.recommended_style || '未知');
+        $('skeleton').classList.add('hidden');
+        $('result-content').classList.remove('hidden');
+
+        // Summary
+        const recZh = safeStr(fr.recommended_style_zh, fr.recommended_style || '');
         const alts = safeArr(fr.alternative_styles_zh).length ? safeArr(fr.alternative_styles_zh) : safeArr(fr.alternative_styles);
         const altText = alts.length ? '（备选：' + alts.join('、') + '）' : '';
-        summary.innerHTML = '<strong>核心推荐：</strong>' + recZh + ' ' + altText +
-          '<div class="llm-report">' + marked.parse(safeStr(fr.decision_basis?.llm_summary, '')) + '</div>';
+        summary.innerHTML = '<div class="rec-main"><span class="rec-badge">核心推荐</span><strong>' + recZh + '</strong></div>' +
+          (altText ? '<div class="rec-alt">' + altText + '</div>' : '') +
+          '<details class="llm-detail"><summary>LLM 分析报告</summary><div class="llm-report">' + marked.parse(safeStr(fr.decision_basis?.llm_summary, '')) + '</div></details>';
 
-        // 矩阵
+        // Matrix
         renderMatrix(safeArr(fr.comparison_matrix));
+        renderMatrixCards(safeArr(fr.comparison_matrix));
 
-        // 拓扑
-        result.classList.remove('hidden');
+        // Topology
         const topoDef = buildTopology(safeArr(fr.comparison_matrix), fr.recommended_style);
         try {
           const { svg } = await mermaid.render('topology-svg', topoDef);
           topology.innerHTML = svg;
         } catch (e) { topology.innerHTML = '<pre class="code-sm">' + topoDef + '</pre>'; }
 
-        // 特征
         renderFeatures(data?.extracted_features, data?.feature_hits);
-
-        // 追踪
+        renderArchInclination(data);
+        renderImpactTable(data);
         renderWorkflowTrace(data);
-
-        // 图谱证据
-        renderGraphEvidence(data);
-
-        // 组合
         renderCombo(data);
-
-        // 重构
         renderRefactoring(data);
 
-        // 缓存
-        const cacheDiv = $('cache-status');
-        cacheDiv.innerHTML = data?.cache_hit
-          ? '<span class="cache-badge hit">⚡ 缓存命中</span>'
-          : '<span class="cache-badge miss">🔄 实时计算</span>';
+        $('cache-status').innerHTML = data?.cache_hit
+          ? '<span class="cache-badge hit">缓存命中</span>'
+          : '<span class="cache-badge miss">实时计算</span>';
 
-        // ADR
         const adr = fr.adr;
-        const adrDiv = $('adr-info');
         if (adr && adr.adr_id) {
-          adrDiv.innerHTML = '<span class="cache-badge hit">✓ 已记录</span> <strong>' + adr.adr_id + '</strong>' +
-            ' <a href="#" onclick="alert(\'ADR ID: ' + adr.adr_id + '\\n可通过 GET /adr/' + adr.adr_id + ' 查看完整决策记录\');return false;">查看决策溯源</a>';
-        } else { adrDiv.innerHTML = '<span class="dim-text">未生成 ADR</span>'; }
+          $('adr-info').innerHTML = '<span class="cache-badge hit">已记录</span> <strong>' + adr.adr_id + '</strong>';
+        } else { $('adr-info').innerHTML = '<span class="dim-text">未生成 ADR</span>'; }
 
-        // ── 知识进化：保存推荐上下文，显示反馈入口 ──
         _lastReq = input.value;
         _lastRecommended = fr.recommended_style || '';
         _lastCandidates = safeArr(data?.candidates);
         showFeedbackPrompt(!!_lastRecommended);
-        // 刷新权重（可能因刚才的请求而更新）
         loadWeights();
 
         output.textContent = JSON.stringify(data, null, 2);
       } catch (e) {
-        output.textContent = '请求失败：' + e; result.classList.remove('hidden');
+        clearInterval(phaseTimer);
+        $('skeleton').classList.add('hidden');
+        $('result-content').classList.remove('hidden');
+        summary.innerHTML = '<div class="err-card">分析服务暂时不可用<br/><small>请确认后端服务已启动</small></div>';
+        output.textContent = 'Request failed: ' + e;
       } finally {
         btn.disabled = false; btn.innerText = '开始推荐';
       }
     });
+
   </script>
-</body>
-</html>

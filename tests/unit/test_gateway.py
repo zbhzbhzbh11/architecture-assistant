@@ -53,18 +53,19 @@ class TestWorkflowState:
 class TestBuildWorkflow:
     """LangGraph 工作流构建测试."""
 
-    def test_build_returns_none_without_langgraph(self):
-        """langgraph 未安装时 build_workflow() 应返回 None."""
+    def test_build_returns_compiled_graph(self):
+        """langgraph 已安装时 build_workflow() 应返回编译后的图."""
         from services.api_gateway.app.langchain_workflow import build_workflow
         result = build_workflow()
-        # 在无 langgraph 环境下应返回 None
-        assert result is None, "build_workflow should return None when langgraph is not installed"
+        assert result is not None, "build_workflow should return compiled graph when langgraph is installed"
 
-    def test_workflow_engine_is_manual_without_langgraph(self):
-        """验证 main.py 中 WORKFLOW_ENGINE 为 'manual' (langgraph 未安装)."""
-        # 直接导入会触发模块级代码
-        from services.api_gateway.app.main import WORKFLOW_ENGINE
-        assert WORKFLOW_ENGINE in ("langgraph", "manual")
+    def test_workflow_engine_is_langgraph(self):
+        """验证 main.py 中只使用 LangGraph 编排 (已移除双引擎设计)."""
+        from services.api_gateway.app.main import _langgraph_orchestrate
+        assert _langgraph_orchestrate is not None
+        # Verify that _manual_orchestrate is no longer importable
+        with pytest.raises(ImportError):
+            from services.api_gateway.app.main import _manual_orchestrate  # noqa: F811
 
 
 class TestRecommendResponse:
@@ -221,7 +222,7 @@ class TestCacheInfrastructure:
 
 
 # ====================================================================
-# recommend() 端点 + _manual_orchestrate() + _langgraph_orchestrate()
+# recommend() 端点 + _langgraph_orchestrate()
 # ====================================================================
 
 _SR = Path(__file__).resolve().parent.parent.parent
@@ -387,153 +388,6 @@ class TestRecommendEndpoint:
         assert result["final_report"]["recommended_style"] == "Event-Driven Architecture"
         # cache_set 被调用
         ms.assert_called_once()
-
-    def test_langgraph_fail_fallback_to_manual(self):
-        """LangGraph 抛异常 → 回退到 _manual_orchestrate → 最终结果标记为 manual."""
-        import asyncio
-        from services.api_gateway.app.main import recommend, RecommendRequest
-
-        payload = RecommendRequest(requirement=REQUIREMENT_TEXT)
-
-        manual_result = {
-            "extracted_features": {"high_concurrency": True},
-            "feature_hits": {"high_concurrency": ["万人"]},
-            "candidates": [{"style": "Microservices", "score": 6}],
-            "final_report": {"recommended_style": "Microservices"},
-            "workflow_engine": "manual",
-            "workflow_trace": [
-                {"node": "extract", "elapsed_ms": 8, "status": "ok"},
-                {"node": "match", "elapsed_ms": 12, "status": "ok"},
-                {"node": "evaluate", "elapsed_ms": 40, "status": "ok"},
-            ],
-        }
-
-        with patch("services.api_gateway.app.main.cache_key") as mk, \
-             patch("services.api_gateway.app.main.cache_get") as mg, \
-             patch("services.api_gateway.app.main.cache_set") as ms, \
-             patch("services.api_gateway.app.main._langgraph_app", MagicMock()), \
-             patch("services.api_gateway.app.main._langgraph_orchestrate") as mlo, \
-             patch("services.api_gateway.app.main._manual_orchestrate") as mmo, \
-             patch("services.api_gateway.app.main.httpx.AsyncClient") as m_ac:
-            mk.return_value = "key-lg-fail"
-            mg.return_value = None
-            mlo.side_effect = RuntimeError("LangGraph StateGraph timeout")
-            mmo.return_value = manual_result
-            m_ac.side_effect = Exception("refactor unreachable")
-
-            result = asyncio.run(recommend(payload))
-
-        # 确认为 manual 回退
-        assert result["workflow_engine"] == "manual"
-        assert result.get("cache_hit") is False
-        # trace 应来自 _manual_orchestrate (3 个节点)
-        trace = result.get("workflow_trace", [])
-        assert len(trace) == 3, f"manual 路径应含 3 个节点, 实为 {len(trace)}"
-        node_names = [t["node"] for t in trace]
-        for name in ("extract", "match", "evaluate"):
-            assert name in node_names
-        # _manual_orchestrate 被调用
-        mmo.assert_called_once()
-        # _langgraph_orchestrate 被调用 (然后失败)
-        mlo.assert_called_once()
-        # 结果来自 manual
-        assert result["final_report"]["recommended_style"] == "Microservices"
-
-
-# ====================================================================
-# TestManualOrchestrate — _manual_orchestrate() 三步串行
-# ====================================================================
-
-class TestManualOrchestrate:
-    """_manual_orchestrate() 正常 + 中间节点失败."""
-
-    def test_normal_three_step_flow(self):
-        """三个下游全部正常时, 数据逐级传递且 trace 含 3 个 ok 节点."""
-        import asyncio
-        from services.api_gateway.app.main import _manual_orchestrate, RecommendRequest
-
-        payload = RecommendRequest(requirement=REQUIREMENT_TEXT)
-
-        extract_resp = _stub_extract_response()
-        match_resp = _stub_match_response()
-        eval_resp = _stub_eval_response()
-
-        mock_ctx = AsyncMock()
-        mock_ctx.post = AsyncMock(side_effect=[extract_resp, match_resp, eval_resp])
-        mock_client = AsyncMock()
-        mock_client.__aenter__.return_value = mock_ctx
-
-        with patch("services.api_gateway.app.main.httpx.AsyncClient", return_value=mock_client):
-            result = asyncio.run(_manual_orchestrate(payload))
-
-        # 编排引擎标记
-        assert result["workflow_engine"] == "manual"
-        # 三层数据逐级传递
-        assert result["extracted_features"]["high_concurrency"] is True
-        assert result["extracted_features"]["real_time"] is True
-        assert len(result["candidates"]) == 3
-        assert result["candidates"][0]["style"] == "Event-Driven Architecture"
-        assert result["final_report"]["recommended_style"] == "Event-Driven Architecture"
-        # trace 含 3 个 ok 节点
-        trace = result["workflow_trace"]
-        assert len(trace) == 3
-        for entry in trace:
-            assert entry["status"] == "ok"
-            assert "elapsed_ms" in entry
-            assert isinstance(entry["elapsed_ms"], (int, float))
-            assert entry["elapsed_ms"] >= 0
-        node_names_order = [t["node"] for t in trace]
-        assert node_names_order == ["extract", "match", "evaluate"]
-
-    def test_mid_node_http_500_propagates(self):
-        """matching-agent 返回 500 → _manual_orchestrate 应抛出异常."""
-        import asyncio
-        from services.api_gateway.app.main import _manual_orchestrate, RecommendRequest
-
-        payload = RecommendRequest(requirement=REQUIREMENT_TEXT)
-
-        extract_resp = _stub_extract_response()
-        match_err = _mock_response({"detail": "Internal Server Error"}, status_code=500)
-
-        mock_ctx = AsyncMock()
-        mock_ctx.post = AsyncMock(side_effect=[extract_resp, match_err])
-        mock_client = AsyncMock()
-        mock_client.__aenter__.return_value = mock_ctx
-
-        with patch("services.api_gateway.app.main.httpx.AsyncClient", return_value=mock_client):
-            with pytest.raises(Exception, match="HTTP 500"):
-                asyncio.run(_manual_orchestrate(payload))
-
-    def test_manual_passes_combination_candidates(self):
-        """_manual_orchestrate 应透传 combination_candidates 到 evaluation-agent."""
-        import asyncio
-        from services.api_gateway.app.main import _manual_orchestrate, RecommendRequest
-
-        payload = RecommendRequest(requirement=REQUIREMENT_TEXT)
-
-        extract_resp = _stub_extract_response()
-        match_resp = _mock_response({
-            "candidates": [{"style": "Microservices", "score": 5}],
-            "combination_candidates": [
-                {"combination_name": "Microservices+Event", "combo_score": 7}
-            ],
-        })
-        eval_resp = _stub_eval_response()
-
-        mock_ctx = AsyncMock()
-        mock_ctx.post = AsyncMock(side_effect=[extract_resp, match_resp, eval_resp])
-        mock_client = AsyncMock()
-        mock_client.__aenter__.return_value = mock_ctx
-
-        with patch("services.api_gateway.app.main.httpx.AsyncClient", return_value=mock_client):
-            result = asyncio.run(_manual_orchestrate(payload))
-
-        # evaluation-agent 被调用时传入了 combination_candidates
-        call_args = mock_ctx.post.call_args_list[2]
-        sent_json = call_args[1]["json"]
-        assert "combination_candidates" in sent_json
-        assert len(sent_json["combination_candidates"]) == 1
-        assert sent_json["combination_candidates"][0]["combination_name"] == "Microservices+Event"
 
 
 # ====================================================================

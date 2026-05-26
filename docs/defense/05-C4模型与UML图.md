@@ -84,7 +84,7 @@ graph TB
         end
 
         subgraph GatewayLayer["网关层"]
-            Gateway["api-gateway :8000<br/>FastAPI 226行<br/>双引擎编排 + 缓存"]
+            Gateway["api-gateway :8000<br/>FastAPI 226行<br/>LangGraph StateGraph 编排 + 缓存"]
         end
 
         subgraph AgentLayer["Agent 层 — 4 个业务微服务"]
@@ -144,9 +144,9 @@ graph TB
 >
 > 最上层**前端层**：nginx 托管一个 289 行的 HTML 页面，不依赖任何前端框架，通过 CDN 加载 Mermaid.js 和 marked.js。
 >
-> 往下**网关层**：api-gateway，系统的唯一对外入口。负责 Pydantic 校验、缓存检查、双引擎编排。如果 LangGraph 没安装，自动回退手动编排。
+> 往下**网关层**：api-gateway，系统的唯一对外入口。负责 Pydantic 校验、缓存检查、LangGraph StateGraph 编排。4 节点顺序执行 (extract → match → evaluate → trace)，matching-agent 和 evaluation-agent 内部采用 Subgraph 封装。
 >
-> 中间是 **Agent 层**——4 个业务微服务。requirements-agent 做特征提取，规则引擎主导；matching-agent 做架构匹配，规则评分 + 图谱融合 + 组合推荐；evaluation-agent 做最终评估，LLM 投票 + 摘要 + ADR 生成；refactoring-agent 做重构建议，非阻塞异步调用。
+> 中间是 **Agent 层**——4 个业务微服务。requirements-agent 做特征提取，LLM 独立分析为主；matching-agent 做架构匹配，规则评分 + 图谱融合 + 组合推荐；evaluation-agent 做最终评估，LLM 投票 + 摘要 + ADR 生成；refactoring-agent 做重构建议，非阻塞异步调用。
 >
 > 最下层**数据层**——knowledge-base 通过统一的调度函数在 JSON 和 Neo4j 之间切换，调用方不感知。
 >
@@ -284,21 +284,132 @@ sequenceDiagram
 
 ---
 
-## 图 4: Agent 协作图
+## 图 4: LangGraph StateGraph + Subgraph 展开（PPT 第 10 页）
+
+### Mermaid 代码
+
+```mermaid
+graph TB
+    subgraph Gateway["API Gateway :8000 — LangGraph 编排引擎"]
+        direction TB
+
+        State["📦 ArchitectureWorkflowState (TypedDict, total=False)"]
+
+        subgraph ParentNodes["父图 — 4 个状态图节点"]
+            direction LR
+            N1["extract_node<br/>━━━━━━━━<br/>📤 POST :8001/extract<br/>📝 extracted_features<br/>⏱ trace.append()"]
+            N2["match_node<br/>━━━━━━━━<br/>📤 POST :8002/match<br/>📝 candidates<br/>⏱ trace.append()"]
+            N3["evaluate_node<br/>━━━━━━━━<br/>📤 POST :8003/evaluate<br/>📝 final_report<br/>⏱ trace.append()"]
+            N4["trace_node<br/>━━━━━━━━<br/>📊 total_ms 汇总<br/>📝 workflow_engine"]
+        end
+
+        State -->|"ainvoke(initial_state)"| N1
+        N1 -->|"shallow merge"| N2
+        N2 -->|"shallow merge"| N3
+        N3 -->|"shallow merge"| N4
+        N4 -->|"返回最终 State"| State
+    end
+
+    subgraph MatchSub["matching-agent Subgraph (3 子节点)"]
+        direction LR
+        MS((START)) --> rule_score["rule_score<br/>HTTP GET /styles<br/>score_style() 评分"]
+        rule_score --> graph_blend["graph_blend<br/>HTTP POST /graph/match<br/>blend_scores() 融合"]
+        graph_blend --> combo_rank["combo_rank<br/>HTTP GET /combinations<br/>rank_combinations()"]
+        combo_rank --> ME((END))
+    end
+
+    subgraph EvalSub["evaluation-agent Subgraph (4 子节点)"]
+        direction LR
+        ES((START)) --> sort["sort<br/>候选按规则分排序"]
+        sort -->|"Send() 并行"| vote["vote<br/>LLM 投票 (t=0.0)"]
+        sort -->|"Send() 并行"| summary["summary<br/>LLM 摘要 (t=0.3)"]
+        vote --> merge["merge<br/>投票加分 + 重排序<br/>对比矩阵 + ADR"]
+        summary --> merge
+        merge --> EE((END))
+    end
+
+    N2 -.->|"Subgraph 调用"| MatchSub
+    N3 -.->|"Subgraph 调用"| EvalSub
+
+    Trace["🔍 前端渲染: 耗时条形图<br/>每个节点 {node, elapsed_ms, status}"]
+
+    N4 -->|"workflow_trace"| Trace
+
+    style Gateway fill:#fff8e0,stroke:#cc8800
+    style State fill:#e8f5e9,stroke:#2e7d32
+    style ParentNodes fill:#f0f8ff,stroke:#1565c0
+    style N1 fill:#fff3e0,stroke:#e65100
+    style N2 fill:#fff3e0,stroke:#e65100
+    style N3 fill:#fff3e0,stroke:#e65100
+    style N4 fill:#e3f2fd,stroke:#1565c0
+    style MatchSub fill:#e8f5e9,stroke:#2e7d32
+    style EvalSub fill:#fff8e1,stroke:#f9a825
+    style Trace fill:#e8f5e9,stroke:#2e7d32
+```
+
+### 设计说明
+
+这张图的核心目的是**在一页 PPT 内讲清楚 LangGraph 的编排模型 + Subgraph 嵌套结构**。和 PPT 第 6 页的 UML 时序图不同——时序图展示的是"一次请求经过哪些阶段"，这张图展示的是"编排引擎内部怎么组织"。
+
+**图的三个层次（自上而下阅读）**：
+
+| 层次 | 内容 | 答辩要点 |
+|------|------|---------|
+| 父图 | 4 个节点顺序执行 + State 共享 | extract → match → evaluate → trace，节点间 shallow merge 自动传递状态 |
+| matching-agent Subgraph | 3 子节点: rule_score → graph_blend → combo_rank | 纯函数评分 + 图谱融合 + 组合排序，封装在子图内部 |
+| evaluation-agent Subgraph | 4 子节点: sort → Send(vote ∥ summary) → merge | Send() 声明式并行——vote 和 summary 同时执行，引擎自动管理并发 |
+
+**视觉设计原则**：
+
+- **父图在上**：建立"4 步顺序执行"的心智模型，State 在顶部建立共享状态概念
+- **子图展开在下**：match 和 evaluate 节点用虚线连接到各自的 Subgraph，展示内部节点结构
+- **Send() 并行标注**：vote 和 summary 之间的并行关系通过 "Send() 并行" 标注突出
+- **绿/黄背景色**：区分两个 Subgraph 的边界
+
+### 在答辩中什么时候讲
+
+**PPT 第 10 页**。放在混合推理和缓存降级之间——讲完"系统怎么推理"之后，讲"推理流程怎么编排执行"。本图重点展示 Subgraph 嵌套结构。
+
+### 讲图的 1 分钟话术
+
+> 这张图展示的是 LangGraph 编排引擎的内部结构——重点是 **Subgraph 嵌套**。
+>
+> 上半部分是**父图**——4 个节点顺序执行：extract → match → evaluate → trace。顶部是 ArchitectureWorkflowState，所有节点共享同一份状态字典，节点间通过 shallow merge 自动传递数据。
+>
+> 下半部分是两个 **Subgraph 展开**——
+>
+> matching-agent 内部是一个 3 子节点的子图：rule_score 规则评分 → graph_blend 图谱融合 → combo_rank 组合排序。纯函数 pipeline，不涉及 LLM。
+>
+> evaluation-agent 内部是一个 4 子节点的子图，其中 vote 和 summary 通过 LangGraph 的 **Send() API** 声明式并行执行——图结构直接声明两个节点可同时运行，LangGraph 引擎自动管理并发调度和结果合并到 merge 节点。
+>
+> 底部是 trace_node 汇总后给前端渲染的耗时条形图。
+>
+> **Subgraph 的设计价值**：父图只需要知道"调用 matching-agent"和"调用 evaluation-agent"，不需要关心每个 Agent 内部有多少个子步骤。这符合软件工程的封装原则——父图管理 Agent 间编排，子图管理 Agent 内部流程。
+
+### 老师可能追问
+
+**Q: Subgraph 和直接平铺所有节点有什么区别？**
+
+> Subgraph 实现了关注点分离。如果平铺，父图会有 7+ 个节点（rule_score, graph_blend, combo_rank, sort, vote, summary, merge...），图结构复杂、难以维护。使用 Subgraph 后，父图只有 4 个节点，match 和 evaluate 的内部细节被封装在各自的子图中。这和生产级 LangGraph 应用的最佳实践一致。
+
+**Q: Send() 并行和 asyncio.gather 有什么不同？**
+
+> Send() 是 LangGraph 的声明式并行 API——在图结构层面声明"这两个节点可以同时执行"，引擎自动管理并发。asyncio.gather 是命令式手动管理。Send() 的优势在于：并行逻辑是图的一部分（可视化、可追踪），引擎自动处理异常隔离和结果合并，不需要手写 try/except 包裹每个并行任务。
+
+---
+
+## 图 5: Agent 协作图（原图 4）
 
 ### Mermaid 代码
 
 ```mermaid
 graph TB
     subgraph Orchestrator["编排层 — API Gateway :8000"]
-        direction LR
-        LangGraph["LangGraph StateGraph<br/>4节点顺序执行"]
-        Manual["手动编排<br/>httpx 顺序调用"]
-        LangGraph -.->|"不可用时回退"| Manual
+        LangGraph["LangGraph StateGraph<br/>━━━━━━━━━━<br/>extract → match → evaluate → trace<br/>━━━━━━━━━━<br/>matching-agent: Subgraph 3子节点<br/>evaluation-agent: Subgraph 4子节点<br/>Send() 声明式并行扇出"]
     end
 
     subgraph AgentCluster["Agent 层 — 4 个业务微服务"]
-        Req["Requirements Agent<br/>:8001<br/>━━━━━━━━━━<br/>输入: 需求文本<br/>输出: 10维特征 + 关键词<br/>━━━━━━━━━━<br/>核心方法:<br/>keyword_hits() 关键词匹配<br/>filter_negation() 否定过滤<br/>llm_semantic_supplement() LLM补全"]
+        Req["Requirements Agent<br/>:8001<br/>━━━━━━━━━━<br/>输入: 需求文本<br/>输出: 10维特征 + 关键词<br/>━━━━━━━━━━<br/>核心方法:<br/>llm_analyze() LLM 独立分析<br/>rule_extract() 纯规则回退<br/>_load_lexicon() 词典溯源"]
 
         Match["Matching Agent<br/>:8002<br/>━━━━━━━━━━<br/>输入: 特征布尔映射<br/>输出: Top3候选 + 组合候选<br/>━━━━━━━━━━<br/>核心方法:<br/>score_style() 规则评分<br/>blend_scores() 图谱融合<br/>rank_combinations() 组合排序"]
 
@@ -355,7 +466,7 @@ graph TB
 
 ---
 
-## 图 5: 混合推理流程图
+## 图 6: 混合推理流程图（原图 5）
 
 ### Mermaid 代码
 
@@ -363,8 +474,8 @@ graph TB
 graph TB
     Input["📝 自然语言需求文本<br/>'开发跨平台即时通讯系统...'"]
 
-    subgraph L1["Layer 1: 规则引擎 — 确定性基线 (始终运行)"]
-        KW["10维关键词词典匹配<br/>~100个中英文关键词"]
+    subgraph L1["Layer 1: LLM 语义分析 — 独立判断 (始终运行)"]
+        KW["10-shot Few-shot LLM 全维度分析<br/>~100个中英文关键词"]
         Neg["否定语义过滤<br/>6个否定词窗口检测"]
         Feat["10维特征布尔映射<br/>+ 命中关键词证据"]
         KW --> Neg --> Feat
@@ -462,7 +573,7 @@ graph TB
 
 ---
 
-## 图 6: 降级机制图
+## 图 7: 降级机制图（原图 6）
 
 ### Mermaid 代码
 
@@ -480,44 +591,37 @@ graph TB
         F1 --> F2 --> F3 --> F4 --> F5
     end
 
-    subgraph Degrade1["Level 1: LangGraph 降级"]
-        D1["⚠ LangGraph 未安装或异常"]
-        D1A["→ 自动回退手动编排 (httpx)"]
-        D1B["功能完全等价, workflow_engine='manual'"]
-        D1 --> D1A --> D1B
+    subgraph Degrade1["Level 1: LLM 调用降级"]
+        D1["⚠ LLM 超时 / 返回异常 / API Key 未配置"]
+        D1A["→ 语义补全: 静默跳过, 维持规则结果"]
+        D1B["→ 风格投票: 返回 null, 不加分"]
+        D1C["→ 摘要生成: _fallback_summary() 模板"]
+        D1D["→ 重构润色: 使用规则模板原文"]
+        D1 --> D1A
+        D1 --> D1B
+        D1 --> D1C
+        D1 --> D1D
     end
 
-    subgraph Degrade2["Level 2: LLM 调用降级"]
-        D2["⚠ LLM 超时 / 返回异常 / API Key 未配置"]
-        D2A["→ 语义补全: 静默跳过, 维持规则结果"]
-        D2B["→ 风格投票: 返回 null, 不加分"]
-        D2C["→ 摘要生成: _fallback_summary() 模板"]
-        D2D["→ 重构润色: 使用规则模板原文"]
-        D2 --> D2A
-        D2 --> D2B
-        D2 --> D2C
-        D2 --> D2D
+    subgraph Degrade2["Level 2: Neo4j 降级"]
+        D2n["⚠ Neo4j 不可达"]
+        D2nA["→ auto/json 模式自动回退 JSON 后端"]
+        D2nB["→ POST /graph/match 返回 available: false"]
+        D2nC["→ 图谱加分 = 0, blend_scores() 不改变规则分"]
+        D2n --> D2nA --> D2nB --> D2nC
     end
 
-    subgraph Degrade3["Level 3: Neo4j 降级"]
-        D3["⚠ Neo4j 不可达"]
-        D3A["→ auto/json 模式自动回退 JSON 后端"]
-        D3B["→ POST /graph/match 返回 available: false"]
-        D3C["→ 图谱加分 = 0, blend_scores() 不改变规则分"]
-        D3 --> D3A --> D3B --> D3C
-    end
-
-    subgraph Degrade4["Level 4: 非关键服务降级"]
-        D4["⚠ refactoring-agent 不可达"]
-        D4A["→ refactoring_advice = {}, 非阻塞"]
-        D4B["⚠ ADR 写入失败"]
-        D4C["→ adr_status = 'failed', 主流程继续"]
-        D4 --> D4A
-        D4B --> D4C
+    subgraph Degrade3["Level 3: 非关键服务降级"]
+        D3ref["⚠ refactoring-agent 不可达"]
+        D3refA["→ refactoring_advice = {}, 非阻塞"]
+        D3refB["⚠ ADR 写入失败"]
+        D3refC["→ adr_status = 'failed', 主流程继续"]
+        D3ref --> D3refA
+        D3refB --> D3refC
     end
 
     subgraph CoreMode["Level Max: 纯规则模式 (核心链路)"]
-        C1["🔒 规则引擎特征提取 — 始终运行"]
+        C1["🔒 LLM 特征分析 — 始终运行，不可用时规则回退"]
         C2["🔒 规则引擎评分排序 — 始终运行"]
         C3["🔒 JSON 知识库后端 — 始终可用"]
         C4["🔒 对比矩阵 + 拓扑图 — 始终产出"]
@@ -526,20 +630,17 @@ graph TB
     end
 
     Request --> FullMode
-    F1 -.->|"降级触发"| D1
-    F2 -.->|"降级触发"| D2
-    F3 -.->|"降级触发"| D3
-    F4 -.->|"降级触发"| D4B
-    F5 -.->|"降级触发"| D4
-    D1 -.->|"继续降级"| D2
-    D2 -.->|"继续降级"| D3
-    D3 -.->|"继续降级"| CoreMode
+    F2 -.->|"降级触发"| D1
+    F3 -.->|"降级触发"| D2n
+    F4 -.->|"降级触发"| D3refB
+    F5 -.->|"降级触发"| D3ref
+    D1 -.->|"继续降级"| D2n
+    D2n -.->|"继续降级"| CoreMode
 
     style FullMode fill:#e8f5e9,stroke:#2e7d32
-    style Degrade1 fill:#fff8e1,stroke:#f9a825
-    style Degrade2 fill:#fff3e0,stroke:#e65100
-    style Degrade3 fill:#e3f2fd,stroke:#1565c0
-    style Degrade4 fill:#f3e5f5,stroke:#6a1b9a
+    style Degrade1 fill:#fff3e0,stroke:#e65100
+    style Degrade2 fill:#e3f2fd,stroke:#1565c0
+    style Degrade3 fill:#f3e5f5,stroke:#6a1b9a
     style CoreMode fill:#ffebee,stroke:#c62828
 ```
 
@@ -556,15 +657,13 @@ graph TB
 
 > 这张图展示了系统最重要的非功能特性——**多级降级**。
 >
-> 从上往下看，系统可以在 4 个层级独立降级——
+> 从上往下看，系统可以在 3 个层级独立降级——
 >
-> **Level 0 全功能模式**：LangGraph 编排 + LLM 全功能 + Neo4j 图谱 + ADR + 重构建议。输出最丰富的推荐报告。
+> **Level 0 全功能模式**：LangGraph StateGraph 编排 + LLM 全功能 + Neo4j 图谱 + ADR + 重构建议。输出最丰富的推荐报告。
 >
-> **Level 1 LangGraph 降级**：langgraph 未安装或运行异常时，自动回退手动编排。功能完全等价，只是 `workflow_engine` 从 "langgraph" 变成 "manual"。用户无感知。
+> **Level 1 LLM 降级**：LLM 未配置或超时时，语义补全静默跳过，投票返回 null，摘要用规则模板。对比度最大——推荐报告从自然语言变成模板化文本，但核心推荐结论不变。
 >
-> **Level 2 LLM 降级**：LLM 未配置或超时时，语义补全静默跳过，投票返回 null，摘要用规则模板。对比度最大——推荐报告从自然语言变成模板化文本，但核心推荐结论不变。
->
-> **Level 3 Neo4j 降级**：Neo4j 不可用时自动回退 JSON 后端。图谱加分归零，`blend_scores()` 不改变规则分。候选排序完全由规则引擎决定。
+> **Level 2 Neo4j 降级**：Neo4j 不可用时自动回退 JSON 后端。图谱加分归零，`blend_scores()` 不改变规则分。候选排序完全由规则引擎决定。
 >
 > **最底层纯规则模式（红色）**：所有增强组件全部失效时，规则引擎 + JSON 知识库仍能独立输出包含推荐结论、对比矩阵、风险建议、拓扑图的完整报告。回归测试 20/20 验证了这一点。
 >
@@ -575,7 +674,6 @@ graph TB
 **Q: 如何保证某个降级层级不会悄悄生效而用户不知情？**
 
 > 每个降级都有明确的前端反馈——
-> - LangGraph 降级 → 状态栏显示 `workflow_engine: "manual"`
 > - LLM 降级 → 摘要文本风格从自然语言变为模板化格式（用户可感知差异）
 > - Neo4j 降级 → 图谱证据区块显示"无图谱证据"
 > - 缓存降级（缓存后端出错）→ 正常执行完整流程，`cache_hit: false`
@@ -584,7 +682,7 @@ graph TB
 
 ---
 
-## 图 7: 可解释证据链图
+## 图 8: 可解释证据链图（原图 7）
 
 ### Mermaid 代码
 

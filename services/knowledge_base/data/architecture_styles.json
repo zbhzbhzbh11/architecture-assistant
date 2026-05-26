@@ -5,7 +5,9 @@
       "name_zh": "分层架构",
       "tags": [
         "complex_business",
-        "strict_consistency"
+        "strict_consistency",
+        "security",
+        "simple_crud"
       ],
       "best_for": [
         "enterprise app",
@@ -31,7 +33,12 @@
         "跨层调用带来性能开销",
         "跨层变更影响面大"
       ],
-      "topology_mermaid": "graph LR\nA[表现层] --> B[应用层]\nB --> C[领域层]\nC --> D[基础设施层]\nD --> E[(数据库)]"
+      "topology_mermaid": "graph LR\nA[表现层] --> B[应用层]\nB --> C[领域层]\nC --> D[基础设施层]\nD --> E[(数据库)]",
+      "penalty_tags": {
+        "high_concurrency": -2,
+        "real_time": -2,
+        "data_intensive": -2
+      }
     },
     {
       "name": "Microservices",
@@ -67,7 +74,11 @@
         "分布式系统复杂度高",
         "运维成本较高"
       ],
-      "topology_mermaid": "graph LR\nA[客户端] --> B[API 网关]\nB --> C[用户服务]\nB --> D[订单服务]\nB --> E[支付服务]\nC --> F[(数据库)]\nD --> G[(数据库)]\nE --> H[(数据库)]"
+      "topology_mermaid": "graph LR\nA[客户端] --> B[API 网关]\nB --> C[用户服务]\nB --> D[订单服务]\nB --> E[支付服务]\nC --> F[(数据库)]\nD --> G[(数据库)]\nE --> H[(数据库)]",
+      "penalty_tags": {
+        "simple_crud": -3,
+        "resource_constrained": -4
+      }
     },
     {
       "name": "Event-Driven Architecture",
@@ -102,14 +113,19 @@
         "链路追踪困难",
         "最终一致性设计复杂"
       ],
-      "topology_mermaid": "graph LR\nA[客户端] --> B[API 网关]\nB --> C[生产者服务]\nC --> D[(事件总线)]\nD --> E[消费者A]\nD --> F[消费者B]\nD --> G[通知服务]"
+      "topology_mermaid": "graph LR\nA[客户端] --> B[API 网关]\nB --> C[生产者服务]\nC --> D[(事件总线)]\nD --> E[消费者A]\nD --> F[消费者B]\nD --> G[通知服务]",
+      "penalty_tags": {
+        "simple_crud": -3,
+        "resource_constrained": -3
+      }
     },
     {
       "name": "SOA",
       "name_zh": "面向服务架构",
       "tags": [
         "complex_business",
-        "team_size_large"
+        "team_size_large",
+        "security"
       ],
       "best_for": [
         "legacy integration",
@@ -142,7 +158,8 @@
       "name_zh": "六边形架构（端口-适配器）",
       "tags": [
         "complex_business",
-        "strict_consistency"
+        "strict_consistency",
+        "reliability"
       ],
       "best_for": [
         "domain-driven design",
@@ -237,7 +254,11 @@
         "模型同步复杂",
         "系统整体复杂度增加"
       ],
-      "topology_mermaid": "graph LR\nA[客户端] --> B[命令 API]\nA --> C[查询 API]\nB --> D[(写数据库)]\nC --> E[(读数据库)]\nD -.事件同步.-> E\nF[事件总线] -.-> D\nF -.-> E"
+      "topology_mermaid": "graph LR\nA[客户端] --> B[命令 API]\nA --> C[查询 API]\nB --> D[(写数据库)]\nC --> E[(读数据库)]\nD -.事件同步.-> E\nF[事件总线] -.-> D\nF -.-> E",
+      "penalty_tags": {
+        "simple_crud": -2,
+        "resource_constrained": -3
+      }
     },
     {
       "name": "Serverless",
@@ -303,13 +324,18 @@
         "一致性模型复杂",
         "内存成本较高"
       ],
-      "topology_mermaid": "graph LR\nA[负载均衡器] --> B[处理单元A]\nA --> C[处理单元B]\nB --> D[(内存网格)]\nC --> D\nD --> E[(异步数据库持久化)]\nB -.复制.-> C"
+      "topology_mermaid": "graph LR\nA[负载均衡器] --> B[处理单元A]\nA --> C[处理单元B]\nB --> D[(内存网格)]\nC --> D\nD --> E[(异步数据库持久化)]\nB -.复制.-> C",
+      "penalty_tags": {
+        "resource_constrained": -4
+      }
     },
     {
       "name": "Client-Server",
       "name_zh": "客户端-服务器架构",
       "tags": [
-        "deployment_constraint"
+        "deployment_constraint",
+        "strict_consistency",
+        "simple_crud"
       ],
       "best_for": [
         "classic enterprise LAN apps",
@@ -335,7 +361,12 @@
         "服务器端可能成为瓶颈",
         "弹性扩展能力有限"
       ],
-      "topology_mermaid": "graph LR\nA[客户端A] --> C[服务器]\nB[客户端B] --> C\nC --> D[(数据库)]\nC --> E[文件存储]"
+      "topology_mermaid": "graph LR\nA[客户端A] --> C[服务器]\nB[客户端B] --> C\nC --> D[(数据库)]\nC --> E[文件存储]",
+      "penalty_tags": {
+        "high_concurrency": -4,
+        "scalability": -3,
+        "team_size_large": -4
+      }
     }
   ]
 }

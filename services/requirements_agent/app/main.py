@@ -1,19 +1,37 @@
+"""Requirements Agent — LLM 语义理解 + 词典溯源.
+
+【模块功能】
+LLM 独立分析需求文本, 输出 12 维特征 + 架构分析理由。
+词典仅用于补充关键词证据 (可解释性), 不影响判断结果。
+
+【为什么 LLM 优先】
+1. 自然语言千变万化 — "双十一流量"/"日活百万"/"并发极高" LLM 都能理解
+2. 否定语义 LLM 原生支持 — 不需要手工维护否定词列表和窗口参数
+3. 词典降级为"证据库" — 只回答"为什么", 不决定"是什么"
+4. LLM 不可用时回退纯规则模式
+
+【流程】
+  Phase 1: LLM 独立分析 → 12维判断 + 架构倾向
+  Phase 2: 词典溯源 → 为 LLM 判断的特征补充关键词证据
+  Phase 3: 回退 → LLM 不可用时降级纯规则提取
+"""
+
 import logging
 import os
 import sys
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List, Tuple
 
 import httpx
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
-# ── 本地开发: 将 services/ 加入 sys.path (Docker 中 WORKDIR 已包含) ──
+# ── 本地开发: 将 services/ 加入 sys.path ──
 _SERVICES_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_SERVICES_ROOT) not in sys.path:
     sys.path.insert(0, str(_SERVICES_ROOT))
 
-# Auto-load .env if exists
+# ── .env 自动加载 (Docker 中通过 docker-compose 注入, 本地开发用此回退) ──
 _ENV_PATH = Path(__file__).resolve().parent.parent.parent.parent / ".env"
 if _ENV_PATH.exists():
     try:
@@ -27,46 +45,79 @@ if _ENV_PATH.exists():
     except Exception:
         pass
 
-# Configure logging
+# ── 日志 ─────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("requirements-agent")
 
-app = FastAPI(title="Requirements Agent", version="0.2.0")
+app = FastAPI(title="Requirements Agent", version="0.3.0")
+
+# ═══════════════════════════════════════════════════════════════
+# 词典加载 — 优先读取外置 JSON, 回退硬编码
+# ═══════════════════════════════════════════════════════════════
+_LEXICON_PATH = Path(__file__).resolve().parent.parent.parent / "knowledge_base" / "data" / "feature_lexicon.json"
+
+
+def _load_lexicon() -> Dict[str, List[str]]:
+    """加载特征关键词词典 — JSON 优先, 不可用时用硬编码回退."""
+    import json as _json
+
+    # 尝试 JSON 文件
+    json_paths = [
+        _LEXICON_PATH,
+        Path("/app/knowledge_base/data/feature_lexicon.json"),
+        Path("/app/data/feature_lexicon.json"),
+    ]
+    for path in json_paths:
+        try:
+            data = _json.loads(path.read_text(encoding="utf-8"))
+            lex = data.get("lexicon", data)
+            if isinstance(lex, dict) and len(lex) >= 12:
+                logger.info(f"Lexicon loaded from {path} ({sum(len(v) for v in lex.values())} keywords)")
+                return {k: [str(w).lower() for w in v] for k, v in lex.items()}
+        except Exception:
+            continue
+
+    # 硬编码回退
+    logger.warning("No lexicon JSON found, using hardcoded fallback")
+    return {
+        "high_concurrency": ["高并发", "并发", "万人", "海量用户", "峰值", "秒杀", "高吞吐", "高qps", "qps", "concurrent", "高负载", "大流量"],
+        "real_time": ["实时", "实时性", "即时", "在线", "低延迟", "毫秒", "消息", "通知", "im", "real-time", "推送", "同步"],
+        "reliability": ["可靠", "可靠性", "高可用", "容灾", "容错", "稳定", "不丢", "一致性", "reliable", "灾备", "熔断", "sla"],
+        "scalability": ["扩展", "扩展性", "可扩展", "扩容", "弹性", "弹性扩缩", "横向", "scale", "可伸缩", "水平扩展", "集群", "分片"],
+        "complex_business": ["复杂业务", "交易", "审批", "规则", "工作流", "workflow", "多流程", "内容管理", "栏目", "文章发布", "cms", "多级栏目", "多模块", "erp"],
+        "strict_consistency": ["强一致", "事务", "金融", "账务", "一致提交", "原子性", "acid", "转账", "回滚", "分布式事务"],
+        "deployment_constraint": ["本地部署", "私有化", "边缘", "多地域", "离线", "内网", "私有云", "信创", "国产化", "不能联网", "局域网"],
+        "data_intensive": ["数据流", "etl", "流处理", "日志", "监控", "数据中台", "批处理", "流水线", "管道", "大数据", "数据仓库", "数据湖", "bi", "报表", "tb级", "pb级"],
+        "team_size_large": ["多团队", "多个团队", "跨团队", "多人协作", "团队协作", "并行开发", "多部门", "外包", "协作开发", "独立交付"],
+        "security": ["安全", "加密", "认证", "鉴权", "授权", "审计", "隔离", "防护", "合规", "脱敏", "防篡改", "权限", "安全隔离", "零信任", "等保", "隐私", "gdpr"],
+    "simple_crud": ["增删改查", "crud", "内部工具", "管理后台", "表单录入", "展示为主", "简单系统", "不复杂", "纯查询"],
+    "resource_constrained": ["预算有限", "成本控制", "小团队", "快速交付", "mvp", "原型验证", "不想维护", "免运维", "初创团队", "资源受限"],
+    }
 
 LLM_API_BASE = os.getenv("LLM_API_BASE", "").strip()
 LLM_API_KEY = os.getenv("LLM_API_KEY", "").strip()
 LLM_MODEL = os.getenv("LLM_MODEL", "").strip()
 
-NEGATION_PATTERNS = ["不需要", "不要求", "无需", "不需要", "没有", "无高", "非"]
-
 
 class ExtractRequest(BaseModel):
-    requirement: str = Field(..., min_length=10)
+    requirement: str = Field(..., min_length=5)
+
+
+ARCH_STYLE_NAMES = [
+    "Layered Architecture", "Microservices", "Event-Driven Architecture",
+    "SOA", "Hexagonal Architecture", "Pipeline-Filter", "CQRS",
+    "Serverless", "Space-Based", "Client-Server",
+]
 
 
 class ExtractResponse(BaseModel):
     features: Dict[str, bool]
     feature_hits: Dict[str, List[str]]
-
-
-def filter_negation(text: str, hits: List[str]) -> List[str]:
-    """过滤被否定词修饰的关键词."""
-    filtered = []
-    for word in hits:
-        idx = text.find(word)
-        prefix = text[max(0, idx - 6):idx]
-        if any(neg in prefix for neg in NEGATION_PATTERNS):
-            continue
-        filtered.append(word)
-    return filtered
-
-
-def keyword_hits(text: str, words: List[str]) -> List[str]:
-    raw = [word for word in words if word in text]
-    return filter_negation(text, raw)
+    llm_disputed: Dict[str, bool] = {}
+    arch_inclination: Dict[str, Any] = {}
 
 
 FEATURE_LABELS_ZH = {
@@ -80,192 +131,187 @@ FEATURE_LABELS_ZH = {
     "data_intensive": "数据密集型",
     "team_size_large": "多团队协作",
     "security": "安全性",
+    "simple_crud": "极简业务",
+    "resource_constrained": "资源受限",
 }
 
 
-async def llm_semantic_supplement(text: str, features: Dict[str, bool],
-                                   feature_hits: Dict[str, List[str]]) -> Dict[str, bool]:
-    """当规则命中维度 <= 2 时, 调 LLM 做语义补全. LLM 不可用时静默降级."""
+async def llm_analyze(text: str) -> Tuple[Dict[str, bool], Dict[str, Any]]:
+    """Phase 1: LLM 独立分析 — 不受规则引擎影响，自主判断全部 12 维特征。
+
+    Returns:
+        (features, arch_inclination)
+        features: 12维 bool 字典
+        arch_inclination: 架构倾向 {complexity_hint, arch_avoid, arch_prefer, reason}
+    """
+    features = {eng: False for eng in FEATURE_LABELS_ZH}
+    arch_inclination: Dict[str, Any] = {}
+
     if not (LLM_API_BASE and LLM_API_KEY and LLM_MODEL):
-        return features
+        logger.info("LLM not configured, will use rule-only fallback")
+        raise RuntimeError("LLM not configured")
 
-    active_count = sum(1 for v in features.values() if v)
-    if active_count > 2:
-        return features
+    arch_names = ", ".join(ARCH_STYLE_NAMES)
+    zh_labels = ", ".join(FEATURE_LABELS_ZH.values())
 
-    logger.info(f"Rule hits only {active_count} dimensions, requesting LLM supplement...")
+    arch_instruction = (
+        "\n\n【架构倾向判断】基于需求文本直接判断系统复杂度和架构方向。"
+        "输出 JSON (无法判断时输出 null):\n"
+        '{"complexity_hint": "low/medium/high", '
+        '"arch_avoid": ["应避免的架构"], '
+        '"arch_prefer": ["倾向的架构"], '
+        '"reason": "简短理由"}\n'
+        f"可选架构: {arch_names}\n"
+        "将特征JSON和架构JSON用 \"---ARCH---\" 分隔。"
+    )
 
-    # 尝试使用 few-shot prompt, 不可用时降级为零样本
     try:
         from common.prompts.requirements_few_shot import build_few_shot_prompt
-        prompt = build_few_shot_prompt(text)
-        logger.info("Using few-shot prompt for requirements supplement")
+        prompt = build_few_shot_prompt(text) + arch_instruction
+        logger.info("Using few-shot prompt for LLM analysis")
     except ImportError:
-        logger.info("Few-shot module not available, using zero-shot prompt")
-        zh_labels = ", ".join(FEATURE_LABELS_ZH.values())
+        logger.info("Few-shot not available, using zero-shot prompt")
         prompt = (
-            "分析以下软件需求描述, 判断是否涉及这些特征维度: "
-            f"{zh_labels}。"
-            "返回严格的 JSON 格式: {\"特征名\": true/false}, 不要输出其他内容。"
+            "你是一位资深软件架构分析师。仔细阅读以下需求描述，对每个维度独立判断。\n"
+            "注意：识别否定语义 (\"不需要实时\" → 实时性=false)。"
+            "识别隐含特征 (\"双十一流量\" → 高并发=true)。\n"
+            f"维度定义: {zh_labels}。\n"
+            "返回严格的 JSON: {\"特征名\": true/false}，每个维度都必须输出。"
             f"\n\n需求: {text}"
-        )
+        ) + arch_instruction
+
     headers = {"Authorization": f"Bearer {LLM_API_KEY}", "Content-Type": "application/json"}
     body = {
         "model": LLM_MODEL,
         "messages": [
-            {"role": "system", "content": "You are a requirements analyst. Output only JSON."},
+            {"role": "system", "content": (
+                "You are a senior software architecture analyst. "
+                "Analyze requirements independently for each dimension. "
+                "Understand implicit signals (\"Double-11 traffic\" implies high concurrency). "
+                "Respect negation (\"doesn't need real-time\" means real_time=false). "
+                "Do NOT let a single keyword override the overall meaning. "
+                "Output only valid JSON."
+            )},
             {"role": "user", "content": prompt},
         ],
-        "temperature": 0.1,
+        "temperature": 0.3,
     }
-    try:
-        async with httpx.AsyncClient(timeout=15.0, trust_env=False) as client:
-            resp = await client.post(f"{LLM_API_BASE}/chat/completions", headers=headers, json=body)
-            resp.raise_for_status()
-            data = resp.json()
-            raw_text = data["choices"][0]["message"]["content"].strip()
-            # 尝试解析 JSON
-            import json
-            # 去掉可能的 markdown 代码块包裹
-            if raw_text.startswith("```"):
-                raw_text = raw_text.split("\n", 1)[-1].rsplit("```", 1)[0]
-            llm_result = json.loads(raw_text)
-            # 回写 LLM 推断的特征 (只写 True, 不覆盖已有 True)
-            for zh_name, flag in llm_result.items():
-                eng_key = {v: k for k, v in FEATURE_LABELS_ZH.items()}.get(zh_name)
-                if eng_key and flag and not features.get(eng_key):
-                    features[eng_key] = True
-                    feature_hits[eng_key] = feature_hits.get(eng_key, []) + ["llm_supplement"]
-            logger.info(f"LLM supplement added features: {sum(1 for v in features.values() if v)} total")
-    except Exception as e:
-        logger.warning(f"LLM supplement failed (fallback to rule-only): {e}")
-    return features
+
+    async with httpx.AsyncClient(timeout=15.0, trust_env=False) as client:
+        resp = await client.post(f"{LLM_API_BASE}/chat/completions", headers=headers, json=body)
+        resp.raise_for_status()
+        data = resp.json()
+        raw_text = data["choices"][0]["message"]["content"].strip()
+        import json as _json
+        if raw_text.startswith("```"):
+            raw_text = raw_text.split("\n", 1)[-1].rsplit("```", 1)[0]
+
+        # 分离特征 JSON 和架构倾向 JSON
+        if "---ARCH---" in raw_text:
+            parts = raw_text.split("---ARCH---", 1)
+            feature_json = parts[0].strip()
+            arch_json = parts[1].strip()
+            if arch_json and arch_json.lower() != "null":
+                try:
+                    parsed = _json.loads(arch_json)
+                    if isinstance(parsed, dict):
+                        arch_inclination = parsed
+                except _json.JSONDecodeError:
+                    pass
+        else:
+            feature_json = raw_text
+
+        llm_result = _json.loads(feature_json)
+
+        # 映射中文标签 → 英文 key
+        reverse_map = {v: k for k, v in FEATURE_LABELS_ZH.items()}
+        active_count = 0
+        for zh_name, flag in llm_result.items():
+            eng_key = reverse_map.get(zh_name)
+            if eng_key and flag:
+                features[eng_key] = True
+                active_count += 1
+
+        logger.info(f"LLM analysis: {active_count}/10 dimensions active, "
+                    f"arch_inclination={'yes' if arch_inclination else 'no'}")
+
+    return features, arch_inclination
+
+
+def rule_extract(text: str, lexicon: Dict[str, List[str]]) -> Tuple[Dict[str, bool], Dict[str, List[str]]]:
+    """Phase 3 回退: 纯规则提取 — LLM 不可用时的降级路径。
+
+    关键词匹配 + 否定过滤, 保证核心功能在任何环境下都能运行。
+    """
+    NEGATION_WORDS = ["不需要", "不要求", "无需", "没有", "不涉及", "不支持", "不包含", "不应", "不必"]
+
+    def _match_with_negation(words):
+        hits = [w for w in words if w in text]
+        # 双向否定检测
+        result = []
+        for w in hits:
+            idx = text.find(w)
+            ctx_start = max(0, idx - 30)
+            ctx_end = min(len(text), idx + len(w) + 30)
+            ctx = text[ctx_start:ctx_end]
+            if not any(neg in ctx for neg in NEGATION_WORDS):
+                result.append(w)
+        return result
+
+    feature_hits = {name: _match_with_negation(words) for name, words in lexicon.items()}
+    features = {name: len(hits) > 0 for name, hits in feature_hits.items()}
+    logger.info(f"Rule-only extraction: {sum(1 for v in features.values() if v)}/10 dimensions")
+    return features, feature_hits
 
 
 @app.get("/health")
 def health() -> Dict[str, str]:
     return {"status": "ok", "service": "requirements-agent"}
+("/health")
+def health() -> Dict[str, str]:
+    return {"status": "ok", "service": "requirements-agent"}
 
+
+# ═══════════════════════════════════════════════════════════════
+# 主端点 — 特征提取三阶段完整流程
+# ═══════════════════════════════════════════════════════════════
 
 @app.post("/extract", response_model=ExtractResponse)
 async def extract(payload: ExtractRequest) -> ExtractResponse:
+    """从自然语言需求中提取 10 维结构化特征.
+
+    Phase 1: LLM 独立分析 (主路径)
+    Phase 2: 词典溯源 (为 LLM 判断补充关键词证据)
+    Phase 3: 纯规则回退 (LLM 不可用时)
+    """
     logger.info(f"Extracting features from requirement: {payload.requirement[:50]}...")
     text = payload.requirement.lower()
+    lexicon: Dict[str, List[str]] = _load_lexicon()
 
-    lexicon: Dict[str, List[str]] = {
-        "high_concurrency": [
-            "高并发",
-            "并发",
-            "万人",
-            "海量用户",
-            "峰值",
-            "秒杀",
-            "高吞吐",
-            "高qps",
-            "qps",
-            "concurrent",
-        ],
-        "real_time": [
-            "实时",
-            "实时性",
-            "即时",
-            "在线",
-            "低延迟",
-            "毫秒",
-            "消息",
-            "通知",
-            "im",
-            "real-time",
-        ],
-        "reliability": [
-            "可靠",
-            "可靠性",
-            "高可用",
-            "容灾",
-            "容错",
-            "稳定",
-            "不丢",
-            "一致性",
-            "reliable",
-        ],
-        "scalability": [
-            "扩展",
-            "扩展性",
-            "可扩展",
-            "扩容",
-            "弹性",
-            "弹性扩缩",
-            "横向",
-            "scale",
-            "可伸缩",
-        ],
-        "complex_business": [
-            "复杂业务",
-            "交易",
-            "审批",
-            "规则",
-            "工作流",
-            "workflow",
-            "多流程",
-        ],
-        "strict_consistency": [
-            "强一致",
-            "事务",
-            "金融",
-            "账务",
-            "一致提交",
-        ],
-        "deployment_constraint": [
-            "本地部署",
-            "私有化",
-            "边缘",
-            "多地域",
-            "离线",
-            "内网",
-        ],
-        "data_intensive": [
-            "数据流",
-            "etl",
-            "流处理",
-            "日志",
-            "监控",
-            "数据中台",
-            "批处理",
-            "流水线",
-            "管道",
-            "图像处理",
-        ],
-        "team_size_large": [
-            "多团队",
-            "多个团队",
-            "跨团队",
-            "多人协作",
-            "团队协作",
-            "并行开发",
-        ],
-        "security": [
-            "安全",
-            "加密",
-            "认证",
-            "鉴权",
-            "授权",
-            "审计",
-            "隔离",
-            "防护",
-            "合规",
-            "脱敏",
-            "防篡改",
-            "权限",
-            "安全隔离",
-            "可靠交付",
-            "零信任",
-        ],
-    }
+    arch_inclination: Dict[str, Any] = {}
+    llm_disputed: Dict[str, bool] = {}
 
-    feature_hits = {name: keyword_hits(text, words) for name, words in lexicon.items()}
-    features = {name: len(hits) > 0 for name, hits in feature_hits.items()}
+    try:
+        # Phase 1: LLM 独立分析
+        features, arch_inclination = await llm_analyze(text)
 
-    # LLM 语义补全: 规则命中过少时调 LLM 二次分析
-    features = await llm_semantic_supplement(text, features, feature_hits)
+        # Phase 2: 词典溯源 — 只为 LLM 标记的 True 特征找关键词证据
+        feature_hits: Dict[str, List[str]] = {}
+        for eng_key, is_active in features.items():
+            if is_active:
+                words = lexicon.get(eng_key, [])
+                hits = [w for w in words if w in text]
+                feature_hits[eng_key] = hits if hits else ["llm_identified"]
+            else:
+                feature_hits[eng_key] = []
 
-    return ExtractResponse(features=features, feature_hits=feature_hits)
+        logger.info(f"LLM analysis complete: {sum(1 for v in features.values() if v)}/10 features")
+
+    except Exception as e:
+        # Phase 3: LLM 不可用 → 纯规则回退
+        logger.warning(f"LLM unavailable, falling back to rule-only: {e}")
+        features, feature_hits = rule_extract(text, lexicon)
+        arch_inclination = {}
+
+    return ExtractResponse(features=features, feature_hits=feature_hits,
+                           llm_disputed=llm_disputed, arch_inclination=arch_inclination)

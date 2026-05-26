@@ -8,8 +8,9 @@ Neo4j 不可用时返回 None, 由上层 fallback 到 JSON.
 
 import json
 import logging
+import math
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("knowledge-base.graph")
@@ -17,6 +18,32 @@ logger = logging.getLogger("knowledge-base.graph")
 NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687").strip()
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j").strip()
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "neo4j").strip()
+
+# ── 时间衰减参数 ──────────────────────────────────────────
+DECAY_K = 0.05  # e^(-0.05*days): 14天→50%, 30天→22%, 90天→1%
+
+
+def _decay_weight(timestamp_str: Optional[str]) -> float:
+    """计算一条反馈的时间衰减因子."""
+    if not timestamp_str:
+        return 1.0
+    try:
+        ts = datetime.fromisoformat(timestamp_str)
+        days = max(0, (datetime.now(timezone.utc).replace(tzinfo=None) - ts).days)
+        return math.exp(-DECAY_K * days)
+    except (ValueError, TypeError):
+        return 1.0
+
+
+def _normalize_weights(raw: Dict[str, Dict[str, float]]) -> Dict[str, Dict[str, float]]:
+    """特征级 max-normalization: 每维度下除以最大值, 使值域 [0,1]."""
+    result: Dict[str, Dict[str, float]] = {}
+    for feat, style_map in raw.items():
+        if not style_map:
+            continue
+        max_count = max(style_map.values())
+        result[feat] = {style: count / max_count for style, count in style_map.items()} if max_count > 0 else dict(style_map)
+    return result
 
 
 def _get_driver():
@@ -84,6 +111,14 @@ class GraphRepository:
                     style_data["cons_zh"] = style_data.get("cons_zh", [])
                     style_data["topology_mermaid"] = style_data.get("topology_mermaid", "")
                     style_data["name_zh"] = style_data.get("name_zh", style_data.get("name", ""))
+                    # 将 JSON 字符串的 penalty_tags 转回 dict
+                    if isinstance(style_data.get("penalty_tags"), str):
+                        try:
+                            style_data["penalty_tags"] = json.loads(style_data["penalty_tags"])
+                        except Exception:
+                            style_data["penalty_tags"] = {}
+                    if "penalty_tags" not in style_data:
+                        style_data["penalty_tags"] = {}
                     styles.append(style_data)
 
                 if not styles:
@@ -103,6 +138,8 @@ class GraphRepository:
             driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
             with driver.session() as session:
                 # 创建风格节点
+                import json as _json
+                penalty_json = _json.dumps(payload.get("penalty_tags", {}), ensure_ascii=False)
                 session.run("""
                     MERGE (s:ArchitectureStyle {name: $name})
                     SET s.name_zh = $name_zh,
@@ -110,7 +147,8 @@ class GraphRepository:
                         s.pros = $pros,
                         s.pros_zh = $pros_zh,
                         s.cons = $cons,
-                        s.cons_zh = $cons_zh
+                        s.cons_zh = $cons_zh,
+                        s.penalty_tags = $penalty_tags
                 """, {
                     "name": payload.get("name", ""),
                     "name_zh": payload.get("name_zh", payload.get("name", "")),
@@ -119,6 +157,7 @@ class GraphRepository:
                     "pros_zh": payload.get("pros_zh", []),
                     "cons": payload.get("cons", []),
                     "cons_zh": payload.get("cons_zh", []),
+                    "penalty_tags": penalty_json,
                 })
                 # 创建 QualityAttribute 节点和关系
                 for tag in payload.get("tags", []):
@@ -189,10 +228,11 @@ class GraphRepository:
 
         # 3. 从 Neo4j 重新计算权重并持久化到 learned_weights.json
         try:
-            weights = GraphRepository._compute_weights_from_neo4j()
+            raw = GraphRepository._compute_weights_from_neo4j()
+            normalized = _normalize_weights(raw)
             from .json_repository import _save_weights
-            _save_weights(weights)
-            logger.info(f"Learned weights recomputed from Neo4j: {len(weights)} dimensions")
+            _save_weights(normalized)  # 保存归一化后的值
+            logger.info(f"Learned weights recomputed from Neo4j: {len(raw)} dims, normalized")
         except Exception as e:
             logger.warning(f"Weight recomputation from Neo4j failed: {e}")
 
@@ -231,31 +271,47 @@ class GraphRepository:
 
     @staticmethod
     def get_learned_weights() -> Optional[Dict[str, Any]]:
-        """从 Neo4j 反馈数据直接计算学习权重 (Neo4j 为权威数据源)."""
-        from .json_repository import _FEEDBACK_LEXICON, _extract_features_from_requirement
+        """从 Neo4j 反馈数据直接计算学习权重 (Neo4j 为权威数据源).
 
-        rows = _run_query("MATCH (f:Feedback) RETURN f.requirement AS requirement, f.recommended_style AS style")
+        每条反馈的贡献 = 特征提取 × 时间衰减因子 e^(-0.05 × days).
+        聚合后做特征级 max-normalization, 使不同特征的 bonus 可比.
+        """
+        from .json_repository import _extract_features_from_requirement
+
+        # 查询全部反馈: requirement, recommended_style, timestamp
+        rows = _run_query(
+            "MATCH (f:Feedback) RETURN f.requirement AS requirement, "
+            "f.recommended_style AS style, f.timestamp AS timestamp"
+        )
         if rows is None:
             return None
 
-        weights: Dict[str, Dict[str, int]] = {}
+        # 1. 聚合: 每条反馈加权衰减后累加到 raw 权重
+        raw_weights: Dict[str, Dict[str, float]] = {}
         for row in rows:
             req = row.get("requirement", "")
             style = row.get("style", "")
+            ts = row.get("timestamp")
             if not req or not style:
                 continue
             features = _extract_features_from_requirement(req)
+            decay = _decay_weight(ts)  # 时间衰减: 0~1
             for feat in features:
-                weights.setdefault(feat, {}).setdefault(style, 0)
-                weights[feat][style] += 1
+                raw_weights.setdefault(feat, {}).setdefault(style, 0.0)
+                raw_weights[feat][style] += decay  # 不再 +1, 加衰减值
 
+        # 2. 归一化: 每个特征维度下除以最大值
+        normalized = _normalize_weights(raw_weights)
+
+        # 3. 统计
         style_learn_counts: Dict[str, int] = {}
-        for feat, style_map in weights.items():
+        for feat, style_map in raw_weights.items():
             for style_name, count in style_map.items():
-                style_learn_counts[style_name] = style_learn_counts.get(style_name, 0) + count
+                style_learn_counts[style_name] = style_learn_counts.get(style_name, 0) + int(count)
 
         return {
-            "weights": weights,
+            "weights": normalized,            # float, 归一化后 → score_style 使用
+            "raw_weights": raw_weights,       # float, 带衰减的原始值 → 前端表格展示
             "total_feedback_learned": sum(style_learn_counts.values()),
             "style_learn_counts": style_learn_counts,
         }
@@ -290,24 +346,31 @@ class GraphRepository:
             raise
 
     @staticmethod
-    def _compute_weights_from_neo4j() -> Dict[str, Dict[str, int]]:
-        """从 Neo4j Feedback 节点批量计算 feature→style 权重."""
+    def _compute_weights_from_neo4j() -> Dict[str, Dict[str, float]]:
+        """从 Neo4j Feedback 节点批量计算带衰减的 feature→style 原始权重.
+
+        不包含归一化 — 调用方自行处理."""
         from .json_repository import _extract_features_from_requirement
 
-        rows = _run_query("MATCH (f:Feedback) RETURN f.requirement AS requirement, f.recommended_style AS style")
+        rows = _run_query(
+            "MATCH (f:Feedback) RETURN f.requirement AS requirement, "
+            "f.recommended_style AS style, f.timestamp AS timestamp"
+        )
         if rows is None:
             return {}
 
-        weights: Dict[str, Dict[str, int]] = {}
+        weights: Dict[str, Dict[str, float]] = {}
         for row in rows:
             req = row.get("requirement", "")
             style = row.get("style", "")
+            ts = row.get("timestamp")
             if not req or not style:
                 continue
             features = _extract_features_from_requirement(req)
+            decay = _decay_weight(ts)
             for feat in features:
-                weights.setdefault(feat, {}).setdefault(style, 0)
-                weights[feat][style] += 1
+                weights.setdefault(feat, {}).setdefault(style, 0.0)
+                weights[feat][style] += decay
         return weights
 
     @staticmethod

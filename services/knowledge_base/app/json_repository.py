@@ -1,7 +1,22 @@
-"""JSON 文件存储层 —— 知识库的 fallback 实现和基础存储.
+"""JSON 文件存储层 — 知识库的 fallback 实现和冷备存储.
 
-将所有 JSON 读写逻辑从 main.py 迁移到此模块, 保持原有行为不变.
-Neo4j 不可用时自动使用此层.
+【模块功能】
+当 Neo4j 不可用或 BACKEND=json 时, 从此层读取全部知识库数据。
+同时提供特征提取和权重更新功能, 供 GraphRepository 调用。
+
+【存储位置】
+  architecture_styles.json     — 10 种架构风格元数据
+  feedback_log.json           — 用户反馈原始记录 (冷备)
+  learned_weights.json        — 学习权重缓存 (Neo4j 重算后覆写于此)
+  architecture_combinations.json — 5 种架构组合模式
+  adr_records.json            — 架构决策记录
+
+【与 GraphRepository 的关系】
+  - 所有 REST API 通过 _repo() 调度到此层 (BACKEND=json 时直接调用,
+    BACKEND=auto 时作为 Neo4j 的 fallback)
+  - add_feedback() 被 GraphRepository 调用做冷备
+  - _update_learned_weights() 从需求文本提取特征并更新权重计数
+  - _extract_features_from_requirement() 被 GraphRepository 复用
 """
 
 import json
@@ -17,6 +32,10 @@ STYLES_PATH = DATA_DIR / "architecture_styles.json"
 FEEDBACK_PATH = DATA_DIR / "feedback_log.json"
 WEIGHTS_PATH = DATA_DIR / "learned_weights.json"
 
+# ═══════════════════════════════════════════════════════════════
+# 中文关键词词典 — 从需求文本中提取 10 维特征
+# 与 requirements_agent 的 lexicon 保持一致
+# ═══════════════════════════════════════════════════════════════
 _FEEDBACK_LEXICON: Dict[str, List[str]] = {
     "high_concurrency": ["高并发", "并发", "万人", "海量用户", "峰值", "秒杀", "高吞吐", "qps"],
     "real_time": ["实时", "即时", "在线", "低延迟", "毫秒", "消息", "通知", "im"],
@@ -32,19 +51,15 @@ _FEEDBACK_LEXICON: Dict[str, List[str]] = {
 
 
 class JsonRepository:
-    """JSON 文件存储实现, 提供与 Neo4j 仓库相同的接口."""
-
-    # ── 架构风格 ──────────────────────────────────────────────
+    """JSON 文件存储实现 — 与 GraphRepository 接口一致."""
 
     @staticmethod
     def get_styles() -> Dict[str, Any]:
-        """返回全部架构风格, 格式与原有 GET /styles 完全兼容."""
         with open(STYLES_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
 
     @staticmethod
     def add_style(payload: Dict[str, Any]) -> int:
-        """新增风格并返回更新后的总数."""
         data = JsonRepository.get_styles()
         styles = data.get("styles", [])
         styles.append(payload)
@@ -116,14 +131,23 @@ class JsonRepository:
 
     @staticmethod
     def get_learned_weights() -> Dict[str, Any]:
-        """获取学习权重."""
-        weights = _load_weights()
+        """获取学习权重 — 返回归一化值供 score_style 使用 + raw_weights 供前端展示."""
+        raw = _load_weights()
+        # 特征级 max-normalization
+        normalized = {}
+        for feat, style_map in raw.items():
+            if style_map and max(style_map.values()) > 0:
+                m = max(style_map.values())
+                normalized[feat] = {s: c / m for s, c in style_map.items()}
+            else:
+                normalized[feat] = dict(style_map)
         style_learn_counts: Dict[str, int] = {}
-        for feat, style_map in weights.items():
+        for feat, style_map in raw.items():
             for style_name, count in style_map.items():
                 style_learn_counts[style_name] = style_learn_counts.get(style_name, 0) + count
         return {
-            "weights": weights,
+            "weights": normalized,
+            "raw_weights": raw,
             "total_feedback_learned": sum(style_learn_counts.values()),
             "style_learn_counts": style_learn_counts,
         }

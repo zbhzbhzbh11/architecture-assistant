@@ -1,4 +1,14 @@
-"""缓存键生成 — 对 requirement、prompt、model、knowledge_version 生成稳定 hash."""
+"""缓存键生成 — SHA-256 请求级/Prompt级/评估级缓存键 + 知识库版本指纹.
+
+【三种缓存键】
+  cache_key()       — 请求级缓存: requirement + model + knowledge_version
+  prompt_key()      — Prompt级缓存: prompt + model + knowledge_version
+  candidates_key()  — 评估级缓存: requirement + candidates + model + knowledge_version
+
+【knowledge_version() 作用】
+版本指纹作为自动缓存失效信号: 知识库数据 (10种风格 JSON) 变更时
+MD5 哈希值自动变化, 所有缓存键包含的版本号不匹配 → 旧缓存全部失效.
+"""
 
 import hashlib
 import json
@@ -8,11 +18,10 @@ from typing import Any, Dict, Optional
 
 
 def _get_knowledge_version() -> str:
-    """获取知识库版本: 环境变量优先, 否则用 styles 文件内容 hash."""
+    """环境变量优先, 否则 architecture_styles.json 的 MD5 前 8 位."""
     env_version = os.getenv("KNOWLEDGE_VERSION", "").strip()
     if env_version:
         return env_version
-    # 从 architecture_styles.json 计算内容 hash
     styles_path = Path(__file__).resolve().parent.parent.parent / "knowledge_base" / "data" / "architecture_styles.json"
     try:
         with open(styles_path, "rb") as f:
@@ -22,14 +31,14 @@ def _get_knowledge_version() -> str:
 
 
 def knowledge_version() -> str:
-    """对外暴露的知识库版本, 带缓存避免重复读文件."""
+    """知识库版本指纹 — 缓存的版本标签."""
     return _get_knowledge_version()
 
 
 def cache_key(requirement: str, model: str = "", prefix: str = "req") -> str:
-    """生成请求级缓存键.
+    """请求级缓存键 — SHA-256(prefix|requirement|model|version)[:16].
 
-    key = sha256(prefix + requirement + model + knowledge_version)[:16]
+    API Gateway recommend() 使用此键做请求级缓存.
     """
     kv = knowledge_version()
     raw = f"{prefix}|{requirement}|{model}|{kv}"
@@ -37,14 +46,14 @@ def cache_key(requirement: str, model: str = "", prefix: str = "req") -> str:
 
 
 def prompt_key(prompt: str, model: str = "", prefix: str = "prompt") -> str:
-    """生成 LLM prompt 级缓存键."""
+    """LLM prompt 级缓存键 — 相同 prompt + 相同 model → 命中."""
     kv = knowledge_version()
     raw = f"{prefix}|{model}|{kv}|{prompt}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
 def candidates_key(requirement: str, candidates_json: str, model: str = "", prefix: str = "eval") -> str:
-    """生成 evaluation 缓存键 (需求 + 候选 + 模型)."""
+    """评估级缓存键 — requirement + candidates + model 的组合."""
     kv = knowledge_version()
     raw = f"{prefix}|{requirement}|{candidates_json}|{model}|{kv}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]

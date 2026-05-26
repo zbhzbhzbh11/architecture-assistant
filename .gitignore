@@ -12,3 +12,7 @@ learned_weights.json
 dist/
 build/
 adr_records.json
+docs/resume_learning/
+docs/面试复习/
+scripts/build_interview_book.py
+scripts/build_interview_pdf.py

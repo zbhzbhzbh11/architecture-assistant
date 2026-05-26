@@ -63,7 +63,7 @@ ARCHITECTURE_SMELLS: Dict[str, Dict[str, Any]] = {
     },
     "scaling_bottleneck": {
         "name_zh": "扩展瓶颈",
-        "keywords": ["性能瓶颈", "扩展困难", "高并发"],
+        "keywords": ["性能瓶颈", "扩展困难"],
         "description": "当前架构无法水平扩展，高并发场景下性能下降明显。",
     },
     "slow_release": {

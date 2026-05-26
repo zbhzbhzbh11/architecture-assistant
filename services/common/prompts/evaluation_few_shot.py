@@ -1,12 +1,28 @@
 """Evaluation Agent — Few-shot Prompt 示例库.
 
-覆盖 3 种典型推荐场景: Event-Driven, Microservices, Layered/CQRS.
-每个示例展示完整的输出结构 (推荐架构 / 推荐理由 / 优缺点 / 风险与建议).
+【模块功能】
+为 evaluation-agent 的 LLM 摘要生成 (llm_summary) 提供 3-shot prompt。
+帮助 LLM 生成结构一致、专业术语准确的架构评审报告。
+
+【为什么需要 Few-shot】
+- 零样本 LLM 输出的报告格式不稳定 (有时用"优点:"有时用"优势:")
+- 3 个示例教会 LLM 固定输出格式:
+  推荐架构 → 推荐理由 → 优缺点分析 → 风险与建议
+- 示例覆盖三种主流风格, 让 LLM 学会不同场景的表述风格:
+  示例1: 事件驱动 (IM系统, 高并发+实时+松耦合)
+  示例2: 微服务 (电商, 多团队+强一致+独立部署)
+  示例3: 分层架构 (企业审批, 稳定迭代+低复杂度)
+
+【使用方式】evaluation_agent/app/main.py 第 70-73 行:
+  try: prompt = build_few_shot_prompt(...)  → 3-shot
+  except ImportError: prompt = 零样本版本    → fallback
 """
 
 from typing import Dict, List
 
-# 3 个 few-shot 示例
+# 3 个 few-shot 示例 — 每个是完整的架构评审报告
+# 结构: requirement (需求), core_style (核心推荐), alt_style (备选), output (报告全文)
+# 统一按 "推荐架构→推荐理由→优缺点→风险建议" 四段式组织
 EXAMPLES: List[Dict[str, str]] = [
     {
         "requirement": "开发跨平台即时通讯系统，支持万人同时在线，消息实时可靠，后续扩展视频通话。",
@@ -80,12 +96,27 @@ EXAMPLES: List[Dict[str, str]] = [
 ]
 
 
-def build_few_shot_prompt(requirement: str, best_style: str,
-                          alt_styles: str, candidates_json: str) -> str:
-    """构建含 few-shot 示例的摘要 prompt.
+def build_few_shot_prompt(
+    requirement: str, best_style: str, alt_styles: str, candidates_json: str
+) -> str:
+    """构建含 3 个 few-shot 示例的架构评审 prompt.
 
-    在原有零样本 prompt 前加入 3 个参考示例,
-    帮助 LLM 理解输出结构和专业术语风格.
+    【算法】
+    1. 遍历 EXAMPLES, 每条展示: 原需求 + 推荐风格 + 完整报告
+    2. 在示例后追加当前用户的需求、推荐风格、候选详情
+    3. 要求 LLM 参照示例的格式和风格输出
+
+    【输出结构】
+    四段式固定格式:
+      1. 推荐架构 (核心推荐 + 备选)
+      2. 推荐理由 (2-3条要点)
+      3. 优缺点分析 (√ 优点, × 缺点)
+      4. 风险与建议 (风险 + 建议)
+
+    【为什么 3 个示例而不是 1 个或 6 个】
+      1 个 → LLM 倾向复制示例中的具体内容而非推理
+      6 个 → token 消耗大, 对于格式约束来说过度
+      3 个 → 恰好覆盖三种主流风格 + 展示不同领域表述
     """
     shot_lines = ["以下是一些架构评审报告的参考示例，请注意输出的结构和专业表述：", ""]
 
@@ -98,6 +129,7 @@ def build_few_shot_prompt(requirement: str, best_style: str,
 
     few_shot_block = "\n".join(shot_lines)
 
+    # 在实际需求前追加当前上下文, 要求按示例格式输出
     prompt = (
         f"{few_shot_block}\n"
         "---\n"
