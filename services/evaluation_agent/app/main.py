@@ -65,16 +65,14 @@ class EvaluateRequest(BaseModel):
 
 
 def _get_subgraph():
-    global _eval_subgraph
-    if _eval_subgraph is None:
-        from . import evaluation_subgraph as esub
-        esub.LLM_API_BASE = LLM_API_BASE
-        esub.LLM_API_KEY = LLM_API_KEY
-        esub.LLM_MODEL = LLM_MODEL
-        esub.KNOWLEDGE_BASE_URL = KNOWLEDGE_BASE_URL
-        _eval_subgraph = build_evaluation_subgraph(
-            LLM_API_BASE, LLM_API_KEY, LLM_MODEL, KNOWLEDGE_BASE_URL)
-    return _eval_subgraph
+    """每次请求重新编译 Subgraph, 避免 Python 模块缓存导致的代码不同步."""
+    from . import evaluation_subgraph as esub
+    esub.LLM_API_BASE = LLM_API_BASE
+    esub.LLM_API_KEY = LLM_API_KEY
+    esub.LLM_MODEL = LLM_MODEL
+    esub.KNOWLEDGE_BASE_URL = KNOWLEDGE_BASE_URL
+    return build_evaluation_subgraph(
+        LLM_API_BASE, LLM_API_KEY, LLM_MODEL, KNOWLEDGE_BASE_URL)
 
 
 @app.get("/health")

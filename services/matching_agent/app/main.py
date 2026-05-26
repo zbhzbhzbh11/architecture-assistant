@@ -28,9 +28,6 @@ logger = logging.getLogger("matching-agent")
 app = FastAPI(title="Matching Agent", version="0.4.0")
 KNOWLEDGE_BASE_URL = os.getenv("KNOWLEDGE_BASE_URL", "http://localhost:8004")
 
-# 启动时编译一次 Subgraph (模块级单例)
-_matching_subgraph = None
-
 class MatchRequest(BaseModel):
     features: Dict[str, bool]
     llm_disputed: Dict[str, bool] = {}
@@ -42,11 +39,8 @@ class MatchResponse(BaseModel):
 
 
 def _get_subgraph():
-    """惰性初始化 Subgraph (首次调用时编译)."""
-    global _matching_subgraph
-    if _matching_subgraph is None:
-        _matching_subgraph = build_matching_subgraph(KNOWLEDGE_BASE_URL)
-    return _matching_subgraph
+    """每次请求重新编译 Subgraph, 避免 Python 模块缓存导致的代码不同步."""
+    return build_matching_subgraph(KNOWLEDGE_BASE_URL)
 
 
 @app.get("/health")
@@ -56,16 +50,11 @@ def health() -> Dict[str, str]:
 
 @app.post("/match", response_model=MatchResponse)
 async def match(payload: MatchRequest) -> MatchResponse:
-    """POST /match — 特征向量 → Top 3 候选 + 组合推荐.
-
-    Subgraph 路径 (langgraph 可用):
-      START → rule_score → graph_blend → combo_rank → END
-
-    直落路径 (langgraph 不可用):
-      顺序执行 规则评分 → 图谱融合 → Top3 → 组合推荐
-    """
+    """POST /match — 特征向量 → Top 3 候选 + 组合推荐."""
     subgraph = _get_subgraph()
-    return await _match_via_subgraph(payload, subgraph)
+    if subgraph is not None:
+        return await _match_via_subgraph(payload, subgraph)
+    return await _match_direct(payload)
 
 
 async def _match_via_subgraph(payload: MatchRequest, subgraph) -> MatchResponse:
@@ -79,4 +68,35 @@ async def _match_via_subgraph(payload: MatchRequest, subgraph) -> MatchResponse:
     return MatchResponse(
         candidates=result.get("candidates", []),
         combination_candidates=result.get("combination_candidates", []),
+    )
+
+
+async def _match_direct(payload: MatchRequest) -> MatchResponse:
+    """直落路径: asyncio.gather 并行 (langgraph 不可用时)."""
+    import asyncio
+    from .matching_subgraph import _rule_score_node, _graph_score_node, _blend_node, _combo_rank_node
+
+    state: Dict[str, Any] = {
+        "features": payload.features,
+        "llm_disputed": payload.llm_disputed,
+        "arch_inclination": payload.arch_inclination,
+    }
+
+    # 并行执行规则评分 + 图谱评分 (asyncio.gather 替代 Send())
+    rule_result, graph_result = await asyncio.gather(
+        _rule_score_node(state),
+        _graph_score_node(state),
+    )
+    state.update(rule_result)
+    state.update(graph_result)
+
+    # 融合 + 组合推荐
+    blend_result = await _blend_node(state)
+    state.update(blend_result)
+    combo_result = await _combo_rank_node(state)
+    state.update(combo_result)
+
+    return MatchResponse(
+        candidates=state.get("candidates", []),
+        combination_candidates=state.get("combination_candidates", []),
     )
