@@ -156,12 +156,15 @@ def select_top3(scored: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         for item in sorted(non_mainstream, key=lambda x: x["score"], reverse=True):
             if item["score"] > 0 and item["style"] not in {x["style"] for x in top3} and len(top3) < 3:
                 top3.append(item)
-    # 不足 3 个时用最高分候补补齐 (跳过负分, 确保始终返回至少 3 个候选)
+    # 不足 3 个时用最高分候补补齐 (跳过负分, 同分按标签匹配数降序)
     if len(top3) < 3:
         remaining = sorted(
             [item for item in scored if item["style"] not in {x["style"] for x in top3}
              and item["score"] >= 0],
-            key=lambda x: x["score"], reverse=True
+            key=lambda x: (x["score"],
+                           len([r for r in x.get("reasons", [])
+                                if "特征匹配" in r])),
+            reverse=True
         )
         for item in remaining:
             if len(top3) >= 3:
