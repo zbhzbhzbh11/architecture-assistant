@@ -105,6 +105,25 @@ class JsonRepository:
         return {"status": "ok", "total_feedback": len(feedback_list)}
 
     @staticmethod
+    def _save_feedback_log(requirement: str, recommended_style: str,
+                           user_choice: Optional[str], comment: Optional[str]) -> None:
+        """冷备: 仅写入反馈日志, 不触发权重计算 (权重以 Neo4j 为权威源)."""
+        feedback_list: List[Dict[str, Any]] = []
+        if FEEDBACK_PATH.exists():
+            with open(FEEDBACK_PATH, "r", encoding="utf-8") as f:
+                feedback_list = json.load(f)
+        feedback_list.append({
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "requirement": requirement,
+            "recommended_style": recommended_style,
+            "user_choice": user_choice,
+            "comment": comment,
+            "is_confirmed": user_choice == recommended_style,
+        })
+        with open(FEEDBACK_PATH, "w", encoding="utf-8") as f:
+            json.dump(feedback_list, f, ensure_ascii=False, indent=2)
+
+    @staticmethod
     def get_feedback_stats() -> Dict[str, Any]:
         """反馈统计."""
         if not FEEDBACK_PATH.exists():

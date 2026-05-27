@@ -226,10 +226,11 @@ class GraphRepository:
             logger.warning(f"Neo4j feedback save failed, will fallback to JSON: {e}")
             return None
 
-        # 2. JSON 备份
+        # 2. JSON 冷备 (仅记录日志, 不重复计算权重 — Neo4j 已为权威源)
         try:
             from .json_repository import JsonRepository
-            JsonRepository.add_feedback(requirement, recommended_style, user_choice, comment, features)
+            JsonRepository._save_feedback_log(
+                requirement, recommended_style, user_choice, comment)
         except Exception as e:
             logger.warning(f"JSON feedback backup skipped: {e}")
 
@@ -329,8 +330,12 @@ class GraphRepository:
     def _neo4j_save_feedback(requirement: str, recommended_style: str,
                              user_choice: Optional[str], comment: Optional[str],
                              features: Optional[Dict[str, bool]] = None) -> int:
-        """写入 Feedback 节点到 Neo4j, 返回总反馈数.
-        features: LLM 提取的活跃特征列表, 持久化到节点供后续权重计算."""
+        """写入 Feedback 节点 + HAS_FEATURE 关系 (图谱原生建模).
+
+        features 不作为数组属性存储, 而是创建:
+          (f:Feedback)-[:HAS_FEATURE]->(q:QualityAttribute)
+        这样权重计算可以用图遍历, 无需解析数组.
+        """
         active_features = [k for k, v in (features or {}).items() if v]
         try:
             from neo4j import GraphDatabase
@@ -340,16 +345,22 @@ class GraphRepository:
                     CREATE (f:Feedback {
                         timestamp: $ts, requirement: $req,
                         recommended_style: $rec, user_choice: $choice,
-                        comment: $comment, is_confirmed: $confirmed,
-                        active_features: $features
+                        comment: $comment, is_confirmed: $confirmed
                     })
                 """, {
                     "ts": datetime.now().isoformat(timespec="seconds"),
                     "req": requirement, "rec": recommended_style,
                     "choice": user_choice, "comment": comment,
                     "confirmed": user_choice == recommended_style,
-                    "features": active_features,
                 })
+                # 图关系: Feedback → QualityAttribute (替代数组属性)
+                for feat in active_features:
+                    session.run("""
+                        MATCH (f:Feedback {requirement: $req, timestamp: $ts})
+                        MERGE (q:QualityAttribute {name: $feat})
+                        CREATE (f)-[:HAS_FEATURE]->(q)
+                    """, {"req": requirement, "ts": datetime.now().isoformat(timespec="seconds"),
+                          "feat": feat})
                 total = session.run("MATCH (f:Feedback) RETURN count(f) AS cnt").single()["cnt"]
             driver.close()
             return total
@@ -361,47 +372,35 @@ class GraphRepository:
     def _compute_weights_from_neo4j(
             current_features: Optional[Dict[str, bool]] = None
     ) -> Dict[str, Dict[str, float]]:
-        """从 Neo4j Feedback 节点批量计算带衰减的 feature→style 原始权重.
+        """从 Neo4j 图遍历计算带衰减的 feature→style 权重.
 
-        current_features: 当前反馈的 LLM 提取特征 (优先使用, 避免关键词重新提取).
-        不包含归一化 — 调用方自行处理.
+        使用 (f:Feedback)-[:HAS_FEATURE]->(q:QualityAttribute) 关系,
+        不再解析数组属性.
         """
-        from .json_repository import _extract_features_from_requirement
-
         rows = _run_query(
-            "MATCH (f:Feedback) RETURN f.requirement AS requirement, "
-            "f.recommended_style AS style, f.timestamp AS timestamp, "
-            "f.active_features AS features"
+            "MATCH (f:Feedback)-[:HAS_FEATURE]->(q:QualityAttribute) "
+            "RETURN q.name AS feature, f.recommended_style AS style, f.timestamp AS timestamp"
         )
         if rows is None:
             return {}
 
         weights: Dict[str, Dict[str, float]] = {}
         for row in rows:
-            req = row.get("requirement", "")
+            feat = row.get("feature", "")
             style = row.get("style", "")
             ts = row.get("timestamp")
-            if not req or not style:
-                continue
-            # 优先使用存储的 LLM 特征, fallback 到关键词提取
-            stored_features = row.get("features")
-            if stored_features and isinstance(stored_features, list) and stored_features:
-                features = stored_features
-            elif req:
-                features = _extract_features_from_requirement(req)
-            else:
+            if not feat or not style:
                 continue
             decay = _decay_weight(ts)
-            for feat in features:
-                weights.setdefault(feat, {}).setdefault(style, 0.0)
-                weights[feat][style] += decay
-        # 合并当前反馈的 LLM 特征 (如果还没被 Neo4j 查询覆盖)
+            weights.setdefault(feat, {}).setdefault(style, 0.0)
+            weights[feat][style] += decay
+        # 合并当前反馈的 LLM 特征 (尚未写入 Neo4j)
         if current_features:
             active = [k for k, v in current_features.items() if v]
+            target_style = None  # 由调用方上下文提供
             for feat in active:
-                if feat not in weights:
-                    weights.setdefault(feat, {}).setdefault(style, 0.0)
-                    weights[feat][style] += 1.0
+                weights.setdefault(feat, {}).setdefault(target_style or "", 0.0)
+                weights[feat][target_style or ""] += 1.0
         return weights
 
     @staticmethod
