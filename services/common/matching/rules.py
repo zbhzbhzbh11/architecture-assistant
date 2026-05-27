@@ -30,8 +30,10 @@ MAINSTREAM_STYLES = [
 
 def score_style(style: Dict[str, Any], features: Dict[str, bool],
                 learned_weights: Dict[str, Dict[str, int]] | None = None,
-                llm_disputed: Dict[str, bool] | None = None) -> Dict[str, Any]:
+                llm_disputed: Dict[str, bool] | None = None,
+                raw_weights: Dict[str, Dict[str, float]] | None = None) -> Dict[str, Any]:
     """规则引擎评分 — 四层: 标签匹配 + 学习权重 + 特定规则 + 非对称惩罚.
+    raw_weights: 原始衰减计数 (评分阈值用, 避免归一化放大单次反馈).
     llm_disputed: LLM 争议的特征 → 降权为 +1 (原 +2).
     reasons 数组记录每条加分原因, 用于前端可解释性展示.
     """
