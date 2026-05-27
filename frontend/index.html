@@ -457,9 +457,10 @@
     const GATEWAY = 'http://localhost:8000';
     const KB_URL  = 'http://localhost:8004';
 
-    function tierBadge(score) {
-      if (score >= 0.75) return '<span class="wt-badge gold">金牌验证</span>';
-      if (score >= 0.35) return '<span class="wt-badge silver">银牌验证</span>';
+    function tierBadge(raw) {
+      if (raw >= 1.5) return '<span class="wt-badge gold">金牌验证</span>';
+      if (raw >= 0.5) return '<span class="wt-badge silver">银牌验证</span>';
+      if (raw <= -0.5) return '<span class="wt-badge none" style="color:#dc2626;background:#fee2e2">差评</span>';
       return '<span class="wt-badge none">--</span>';
     }
 
@@ -533,23 +534,23 @@
         if (!entries.length) { div.innerHTML = '<span class="dim-text">暂无学习权重</span>'; return; }
 
         const prev = showDelta ? _weightsSnapshot : {};
-        let html = '<table class="weights-table"><thead><tr><th>特征维度</th><th>风格</th><th>关联强度</th><th>经验段位</th>';
+        let html = '<table class="weights-table"><thead><tr><th>特征维度</th><th>风格</th><th>原始计数</th><th>经验段位</th>';
         if (showDelta) html += '<th>本次影响</th>';
         html += '</tr></thead><tbody>';
         entries.forEach(([feat, map]) => {
           Object.entries(map).forEach(([style, score]) => {
-            const pct = Math.round(score * 100) + '%';
+            const rawVal = (_latestRawWeights[feat] || {})[style];
+            const raw = typeof rawVal === 'number' ? rawVal.toFixed(2) : '-';
             const prevScore = (prev[feat] && prev[feat][style]) ? prev[feat][style] : null;
-            const tier = tierBadge(score);
+            const tier = tierBadge(rawVal || 0);
             html += '<tr><td>' + (FEAT_LABELS[feat] || feat) + '</td><td>' + style + '</td>' +
-              '<td><span class="wt-strength">' + pct + '</span></td>' +
+              '<td><span class="wt-strength">' + raw + '</span></td>' +
               '<td>' + tier + '</td>';
             if (showDelta) {
               if (prevScore !== null) {
                 const delta = score - prevScore;
-                const dPct = Math.round(delta * 100);
-                if (delta > 0.01) html += '<td><span class="wt-delta up">+' + dPct + '% ⬆</span></td>';
-                else if (delta < -0.01) html += '<td><span class="wt-delta down">' + dPct + '% ⬇</span></td>';
+                if (delta > 0.01) html += '<td><span class="wt-delta up">+' + delta.toFixed(2) + ' ⬆</span></td>';
+                else if (delta < -0.01) html += '<td><span class="wt-delta down">' + delta.toFixed(2) + ' ⬇</span></td>';
                 else html += '<td><span class="wt-delta same">--</span></td>';
               } else {
                 html += '<td><span class="wt-delta new">新增</span></td>';
