@@ -78,8 +78,10 @@ class JsonRepository:
 
     @staticmethod
     def add_feedback(requirement: str, recommended_style: str,
-                     user_choice: Optional[str], comment: Optional[str]) -> Dict[str, Any]:
-        """记录一条反馈并触发权重学习."""
+                     user_choice: Optional[str], comment: Optional[str],
+                     features: Optional[Dict[str, bool]] = None) -> Dict[str, Any]:
+        """记录一条反馈并触发权重学习.
+        features: LLM 已提取的 12 维特征 (优先使用)."""
         feedback_list: List[Dict[str, Any]] = []
         if FEEDBACK_PATH.exists():
             with open(FEEDBACK_PATH, "r", encoding="utf-8") as f:
@@ -98,7 +100,7 @@ class JsonRepository:
         with open(FEEDBACK_PATH, "w", encoding="utf-8") as f:
             json.dump(feedback_list, f, ensure_ascii=False, indent=2)
 
-        _update_learned_weights(requirement, user_choice or recommended_style)
+        _update_learned_weights(requirement, user_choice or recommended_style, features)
         logger.info(f"JSON feedback recorded: {recommended_style} -> user: {user_choice}")
         return {"status": "ok", "total_feedback": len(feedback_list)}
 
@@ -376,14 +378,20 @@ def _extract_features_from_requirement(text: str) -> List[str]:
     return active
 
 
-def _update_learned_weights(requirement: str, target_style: str) -> None:
-    features = _extract_features_from_requirement(requirement)
-    if not features:
+def _update_learned_weights(requirement: str, target_style: str,
+                             llm_features: Optional[Dict[str, bool]] = None) -> None:
+    """更新学习权重 — 优先使用 LLM 提取的特征, fallback 到关键词提取."""
+    if llm_features:
+        active_features = [k for k, v in llm_features.items() if v]
+    else:
+        active_features = _extract_features_from_requirement(requirement)
+    if not active_features:
         return
     weights = _load_weights()
-    for feat in features:
+    for feat in active_features:
         if feat not in weights:
             weights[feat] = {}
         weights[feat][target_style] = weights[feat].get(target_style, 0) + 1
     _save_weights(weights)
-    logger.info(f"Learned weights updated: {len(features)} features -> {target_style}")
+    source = "LLM" if llm_features else "keyword"
+    logger.info(f"Learned weights updated ({source}): {len(active_features)} features -> {target_style}")

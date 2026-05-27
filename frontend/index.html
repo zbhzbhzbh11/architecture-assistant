@@ -409,6 +409,7 @@
     let _lastReq = '';           // 最后一次请求的需求文本
     let _lastRecommended = '';   // 最后一次推荐的首选风格
     let _lastCandidates = [];    // 最后一次推荐的全部候选
+    let _lastFeatures = {};      // 最后一次 LLM 提取的特征
 
     const GATEWAY = 'http://localhost:8000';
     const KB_URL  = 'http://localhost:8004';
@@ -453,7 +454,7 @@
         const r = await fetch(KB_URL + '/feedback', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requirement: _lastReq, recommended_style: _lastRecommended, user_choice: _lastRecommended, comment: '' })
+          body: JSON.stringify({ requirement: _lastReq, recommended_style: _lastRecommended, user_choice: _lastRecommended, comment: '', features: _lastFeatures })
         });
         const d = await r.json();
         $('feedback-msg').innerHTML = '<span class="cache-badge hit">✓ 已确认推荐, 权重自动更新 (反馈#' + safe(d.total_feedback, '?') + ')</span>';
@@ -604,6 +605,7 @@
         _lastReq = input.value;
         _lastRecommended = fr.recommended_style || '';
         _lastCandidates = safeArr(data?.candidates);
+        _lastFeatures = data?.extracted_features || {};
         showFeedbackPrompt(!!_lastRecommended);
         loadWeights();
 
