@@ -251,8 +251,8 @@ def rule_extract(text: str, lexicon: Dict[str, List[str]]) -> Tuple[Dict[str, bo
         result = []
         for w in hits:
             idx = text.find(w)
-            ctx_start = max(0, idx - 30)
-            ctx_end = min(len(text), idx + len(w) + 30)
+            ctx_start = max(0, idx - 8)
+            ctx_end = min(len(text), idx + len(w) + 10)
             ctx = text[ctx_start:ctx_end]
             if not any(neg in ctx for neg in NEGATION_WORDS):
                 result.append(w)
@@ -260,7 +260,7 @@ def rule_extract(text: str, lexicon: Dict[str, List[str]]) -> Tuple[Dict[str, bo
 
     feature_hits = {name: _match_with_negation(words) for name, words in lexicon.items()}
     features = {name: len(hits) > 0 for name, hits in feature_hits.items()}
-    logger.info(f"Rule-only extraction: {sum(1 for v in features.values() if v)}/10 dimensions")
+    logger.info(f"Rule-only extraction: {sum(1 for v in features.values() if v)}/{len(features)} dimensions")
     return features, feature_hits
 
 
@@ -305,7 +305,16 @@ async def extract(payload: ExtractRequest) -> ExtractResponse:
             else:
                 feature_hits[eng_key] = []
 
-        logger.info(f"LLM analysis complete: {sum(1 for v in features.values() if v)}/10 features")
+        # LLM 返回 0 特征时, 合并规则提取结果 (LLM 语义理解可能有盲区)
+        if sum(1 for v in features.values() if v) == 0:
+            rule_features, rule_hits = rule_extract(text, lexicon)
+            for k, v in rule_features.items():
+                if v:
+                    features[k] = True
+                    feature_hits[k] = rule_hits.get(k, [])
+                    logger.info(f"Rule supplement: {k} (LLM missed)")
+
+        logger.info(f"LLM analysis complete: {sum(1 for v in features.values() if v)}/{len(features)} features")
 
     except Exception as e:
         # Phase 3: LLM 不可用 → 纯规则回退
