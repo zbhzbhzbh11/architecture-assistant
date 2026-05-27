@@ -399,16 +399,16 @@ class TestLearnedWeightsInScoring:
         assert any("学习权重" in r for r in result["reasons"])
 
     def test_medium_weight_adds_one(self):
-        """weight >= 0.3 → +1 分."""
+        """weight >= 0.4 → +1 分 (中等验证)."""
         from services.common.matching.rules import score_style
 
         style = {"name": "Event-Driven Architecture", "tags": [],
                  "pros": [], "cons": []}
         features = {"high_concurrency": True}
-        learned = {"high_concurrency": {"Event-Driven Architecture": 0.35}}
+        learned = {"high_concurrency": {"Event-Driven Architecture": 0.45}}
 
         result = score_style(style, features, learned)
-        assert result["score"] >= 1, f"weight=0.35 应加分, 实际 {result['score']}"
+        assert result["score"] >= 1, f"weight=0.45 应加分, 实际 {result['score']}"
         assert any("学习权重(中)" in r for r in result["reasons"])
 
     def test_weak_weight_no_effect(self):
@@ -432,13 +432,12 @@ class TestLearnedWeightsInScoring:
                  "pros": [], "cons": []}
         features = {"scalability": True, "strict_consistency": True}
         # 只有 scalability 有权重, strict_consistency 没有
-        learned = {"scalability": {"Serverless": 0.9}}
+        learned = {"scalability": {"Serverless": 0.5}}
 
         result = score_style(style, features, learned)
         # 标签匹配: scalability +2 = 2
-        # 学习权重: scalability 0.9>=0.5 → +1
+        # 学习权重: scalability 0.5>=0.4 → +1
         # strict_consistency 不在 learned_weights 中 → 不加
-        # Serverless 没有特定规则触发
         assert result["score"] == 3, f"score 应为 3, 实际 {result['score']}"
 
 

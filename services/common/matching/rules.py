@@ -52,7 +52,10 @@ def score_style(style: Dict[str, Any], features: Dict[str, bool],
                 score += 2
                 hit_reasons.append(f"特征匹配: {zh}")
 
-    # 2. 学习权重分 — 带衰减 + 归一化 (值域 [0,1])
+    # 2. 学习权重分 — 三级阶梯映射 (值域 [0,1])
+    #    w >= 0.7 → +2 (高: 历史强验证)
+    #    w >= 0.4 → +1 (中: 历史中等验证)
+    #    w <  0.4 →  0 (不足: 历史证据不充分)
     learning_bonus = 0
     learned_detail: List[str] = []
     if learned_weights:
@@ -61,15 +64,15 @@ def score_style(style: Dict[str, Any], features: Dict[str, bool],
             if is_active and feat in learned_weights:
                 w = learned_weights[feat].get(style_name, 0)
                 feat_zh = _FEAT_ZH.get(feat, feat)
-                if w >= 0.5:
-                    score += 1
-                    learning_bonus += 1
-                    hit_reasons.append(f"学习权重(强): {feat_zh}→{style_name}")
+                if w >= 0.7:
+                    score += 2
+                    learning_bonus += 2
+                    hit_reasons.append(f"学习权重(高): {feat_zh}→{style_name} (+2)")
                     learned_detail.append(feat_zh)
-                elif w >= 0.3:
+                elif w >= 0.4:
                     score += 1
                     learning_bonus += 1
-                    hit_reasons.append(f"学习权重(中): {feat_zh}→{style_name}")
+                    hit_reasons.append(f"学习权重(中): {feat_zh}→{style_name} (+1)")
                     learned_detail.append(feat_zh)
 
     # 3. 7 条特定规则

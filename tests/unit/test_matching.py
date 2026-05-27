@@ -245,16 +245,16 @@ def test_learned_weights_boosts_score():
     }
     features = {"high_concurrency": True, "real_time": True, "scalability": True}
     learned_weights = {
-        "scalability": {"Event-Driven Architecture": 0.8},
+        "scalability": {"Event-Driven Architecture": 0.5},
     }
 
     no_weight = score_style(style, features)
     with_weight = score_style(style, features, learned_weights)
 
     assert with_weight["score"] == no_weight["score"] + 1, \
-        f"强权重应 +1: 无权={no_weight['score']}, 有权={with_weight['score']}"
-    assert any("学习权重(强)" in r for r in with_weight["reasons"]), \
-        f"理由应含 学习权重(强): {with_weight['reasons']}"
+        f"中等权重应 +1: 无权={no_weight['score']}, 有权={with_weight['score']}"
+    assert any("学习权重(中)" in r for r in with_weight["reasons"]), \
+        f"理由应含 学习权重(中): {with_weight['reasons']}"
     assert "可扩展性" in " ".join(with_weight["reasons"])
 
 
@@ -273,7 +273,7 @@ def test_learned_weights_below_threshold_no_effect():
         "topology_mermaid": "",
     }
     features = {"high_concurrency": True, "real_time": True}
-    # 归一化值: 0.25 < 0.3 阈值 → 不生效
+    # 归一化值: 0.25 < 0.4 阈值 → 不生效
     learned_weights = {
         "real_time": {"Event-Driven Architecture": 0.25},
     }
@@ -282,7 +282,7 @@ def test_learned_weights_below_threshold_no_effect():
     with_weight = score_style(style, features, learned_weights)
 
     assert with_weight["score"] == no_weight["score"], \
-        f"归一化权 <0.3 不应加分: 无权={no_weight['score']}, 有权={with_weight['score']}"
+        f"归一化权 <0.4 不应加分: 无权={no_weight['score']}, 有权={with_weight['score']}"
     assert not any("学习权重" in r for r in with_weight["reasons"])
 
 
