@@ -76,6 +76,9 @@
           <h3>架构决策记录 (ADR)</h3>
           <div id="adr-info" class="adr-info"></div>
 
+          <h3>历史决策统计</h3>
+          <div id="adr-stats" class="adr-stats"></div>
+
           <h3>知识进化 — 反馈与权重</h3>
           <div id="feedback-section" class="feedback-section">
             <div id="feedback-prompt" class="hidden">
@@ -318,6 +321,39 @@
       ' <span class="trace-dot dim">共 ' + total + 'ms</span>';
     }
 
+    async function renderAdrStats() {
+      const div = $('adr-stats');
+      try {
+        const r = await fetch(KB_URL + '/adr/stats');
+        const d = await r.json();
+        const total = d.total_decisions || 0;
+        if (!total) { div.innerHTML = '<span class="dim-text">暂无历史决策数据</span>'; return; }
+
+        const styleStats = d.style_stats || [];
+        const featStats = d.feature_style_stats || [];
+
+        let html = '<div class="adr-stats-grid">';
+        // 左: 风格推荐频次
+        html += '<div class="adr-stat-card"><div class="adr-stat-title">风格推荐频次</div>';
+        html += '<table class="adr-stat-table"><thead><tr><th>风格</th><th>次数</th></tr></thead><tbody>';
+        styleStats.slice(0, 5).forEach(s => {
+          html += '<tr><td>' + (s.style_zh || s.style) + '</td><td>' + s.count + '</td></tr>';
+        });
+        html += '</tbody></table></div>';
+        // 右: 特征→风格关联 Top5
+        html += '<div class="adr-stat-card"><div class="adr-stat-title">特征→风格决策关联</div>';
+        html += '<table class="adr-stat-table"><thead><tr><th>特征</th><th>风格</th><th>次数</th></tr></thead><tbody>';
+        featStats.slice(0, 5).forEach(f => {
+          html += '<tr><td>' + (FEAT_LABELS[f.feature] || f.feature) + '</td>' +
+            '<td>' + f.style + '</td><td>' + f.count + '</td></tr>';
+        });
+        html += '</tbody></table></div>';
+        html += '</div>';
+        html += '<div class="dim-text">共 ' + total + ' 条决策记录</div>';
+        div.innerHTML = html;
+      } catch (e) { div.innerHTML = ''; }
+    }
+
     function renderCombo(data) {
       const div = $('combo-section');
       const combo = data?.final_report?.recommended_combination;
@@ -554,6 +590,7 @@
         renderWorkflowTrace(data);
         renderCombo(data);
         renderRefactoring(data);
+        renderAdrStats();
 
         $('cache-status').innerHTML = data?.cache_hit
           ? '<span class="cache-badge hit">缓存命中</span>'

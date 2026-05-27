@@ -215,6 +215,17 @@ th { background: #f3f4f6; font-weight: 600; }
 .adr-info { margin-bottom: 6px; line-height: 1.8; }
 .adr-info a { color: var(--accent); font-weight: 500; margin-left: 6px; }
 
+/* ── ADR 统计面板 ── */
+.adr-stats { margin-bottom: 8px; }
+.adr-stats-grid { display: flex; gap: 14px; }
+@media (max-width: 768px) { .adr-stats-grid { flex-direction: column; } }
+.adr-stat-card { flex: 1; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 12px; }
+.adr-stat-title { font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 4px; }
+.adr-stat-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 0; }
+.adr-stat-table th { background: #f3f4f6; padding: 3px 6px; text-align: left; font-weight: 500; }
+.adr-stat-table td { padding: 3px 6px; border-bottom: 1px solid #f3f4f6; }
+.adr-stat-table tr:last-child td { border-bottom: none; }
+
 /* ── 折叠 ── */
 details { cursor: pointer; margin-top: 10px; }
 details summary { font-size: 14px; font-weight: 500; color: var(--accent); }
