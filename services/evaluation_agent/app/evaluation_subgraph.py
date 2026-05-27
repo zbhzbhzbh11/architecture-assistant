@@ -299,7 +299,9 @@ async def _merge_node(state: Dict[str, Any]) -> Dict[str, Any]:
             "score": item["score"],
             "learning_bonus": item.get("learning_bonus", 0),
             "learned_detail": item.get("learned_detail", []),
-            "recommendation_type": "核心推荐" if i == 0 else "备选架构",
+            "recommendation_type": "核心推荐" if i == 0 else (
+                "备选架构" if item["score"] > 0 else "基线对比"
+            ),
             "pros": item.get("pros", []), "pros_zh": item.get("pros_zh", []),
             "cons": item.get("cons", []), "cons_zh": item.get("cons_zh", []),
             "key_reasons": _localize_reasons(item.get("reasons", [])),

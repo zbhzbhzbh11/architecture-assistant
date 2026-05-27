@@ -161,8 +161,11 @@
       matrixBody.innerHTML = '';
       rows.forEach(row => {
         const tr = document.createElement('tr');
+        const isBaseline = row.recommendation_type === '基线对比';
         tr.innerHTML = [
-          '<td style="font-weight:600">' + safeStr(row.recommendation_type, '-') + '</td>',
+          '<td style="font-weight:' + (isBaseline ? '400' : '600') +
+          ';color:' + (isBaseline ? '#9ca3af' : 'inherit') + '">' +
+          safeStr(row.recommendation_type, '-') + '</td>',
           '<td>' + safeStr(row.style_zh, row.style || '-') + '</td>',
           '<td>' + safe(row.score, '-') + '</td>',
           '<td>' + (safeArr(row.key_reasons).join('; ') || '-') + '</td>',
@@ -178,7 +181,9 @@
       const div = $('matrix-cards');
       div.innerHTML = '';
       rows.forEach((row, i) => {
-        const tag = i === 0 ? '<span class="combo-badge">核心推荐</span>' : '<span class="cache-badge">备选</span>';
+        const tag = i === 0 ? '<span class="combo-badge">核心推荐</span>' :
+          (row.score > 0 ? '<span class="cache-badge">备选</span>' :
+          '<span class="cache-badge" style="color:#9ca3af;background:#f3f4f6">基线对比</span>');
         div.innerHTML += '<div class="mcard">' +
           '<div class="mcard-head">' + tag + ' <strong>' + safeStr(row.style_zh, row.style || '-') + '</strong>' +
           ' <span class="mscore">得分 ' + safe(row.score, '-') + '</span></div>' +
