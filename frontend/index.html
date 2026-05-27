@@ -89,14 +89,6 @@
               <span id="feedback-stars" class="stars-row hidden">
                 <span class="star" data-r="1">☆</span><span class="star" data-r="2">☆</span><span class="star" data-r="3">☆</span><span class="star" data-r="4">☆</span><span class="star" data-r="5">☆</span>
               </span>
-              <button id="feedback-refine" class="fb-btn fb-refine">补充反馈重新推荐</button>
-              <div id="feedback-refine-box" class="hidden" style="margin-top:8px">
-                <textarea id="feedback-refine-text" rows="3" placeholder="输入补充需求..."></textarea>
-                <div style="margin-top:6px">
-                  <button id="feedback-refine-submit" class="fb-btn fb-confirm">重新推荐</button>
-                  <button id="feedback-refine-cancel" class="fb-btn fb-cancel">取消</button>
-                </div>
-              </div>
               <div id="feedback-msg"></div>
             </div>
             <div id="weights-display" class="weights-display"></div>
@@ -445,7 +437,7 @@
     function showFeedbackPrompt(show) {
       const p = $('feedback-prompt');
       p.classList.toggle('hidden', !show);
-      if (!show) { $('feedback-refine-box').classList.add('hidden'); $('feedback-msg').innerHTML = ''; return; }
+      if (!show) { $('feedback-msg').innerHTML = ''; return; }
       // 恢复所有反馈按钮 (新推荐时重置)
       _feedbackLocked = false;
       document.querySelectorAll('#feedback-confirm, .fb-alt, #feedback-rate-toggle').forEach(b => {
@@ -579,36 +571,7 @@
       }
     }
 
-    // ── 补充反馈 → 重新推荐 ──
-    async function doRefineSubmit() {
-      const extra = $('feedback-refine-text').value.trim();
-      if (!extra) return;
-      $('feedback-msg').innerHTML = '<span class="cache-badge miss">提交反馈并重新推荐...</span>';
-      // 提交补充反馈（携带 comment）
-      try { await fetch(KB_URL + '/feedback', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requirement: _lastReq, recommended_style: _lastRecommended, user_choice: _lastRecommended, comment: extra })
-      }); } catch (e) { /* 非关键 */ }
-      // 清缓存 + 组合新需求重新推荐
-      try { await fetch(GATEWAY + '/cache/clear', { method: 'POST' }); } catch (e) {}
-      const newReq = _lastReq + '。补充需求：' + extra;
-      $('requirement').value = newReq;
-      $('feedback-refine-box').classList.add('hidden');
-      $('feedback-refine-text').value = '';
-      await loadWeights();
-      btn.click();
-    }
-
     $('feedback-confirm').addEventListener('click', doConfirm);
-    $('feedback-refine').addEventListener('click', () => {
-      $('feedback-refine-box').classList.remove('hidden');
-      $('feedback-refine-text').value = '';
-      $('feedback-refine-text').focus();
-    });
-    $('feedback-refine-submit').addEventListener('click', doRefineSubmit);
-    $('feedback-refine-cancel').addEventListener('click', () => {
-      $('feedback-refine-box').classList.add('hidden');
-    });
     $('weights-refresh').addEventListener('click', async () => {
       await loadWeights();
       const now = new Date().toLocaleTimeString();
