@@ -446,6 +446,15 @@
       const p = $('feedback-prompt');
       p.classList.toggle('hidden', !show);
       if (!show) { $('feedback-refine-box').classList.add('hidden'); $('feedback-msg').innerHTML = ''; return; }
+      // 恢复所有反馈按钮 (新推荐时重置)
+      _feedbackLocked = false;
+      document.querySelectorAll('#feedback-confirm, .fb-alt, #feedback-rate-toggle').forEach(b => {
+        b.disabled = false; b.style.opacity = '1';
+      });
+      _starSelected = 0;
+      $('feedback-stars').classList.add('hidden');
+      $('feedback-rate-toggle').innerText = '展开评分';
+      document.querySelectorAll('.star').forEach(s => { s.textContent = '☆'; s.style.color = '#d1d5db'; });
       // 生成备选风格按钮
       const altDiv = $('feedback-alt-btns');
       const alts = _lastCandidates.filter(c => c.style !== _lastRecommended);
