@@ -1,8 +1,5 @@
-"""图谱关系匹配器 — 已废弃 (双驱动架构).
+"""图谱关系匹配器 — 已废弃.
 
-原用于调用 knowledge-base 的 Neo4j 图谱接口获取关系证据,
-现已被 matching_subgraph.py 中的 graph_score_node 替代,
-该节点直接通过 POST /graph/score 获取完整的图谱评分。
+评分已由 common/matching/rules.py score_style() 统一处理,
+数据通过 knowledge-base /styles 和 /feedback/weights 接口获取.
 """
-
-# 保留此文件以维持向后兼容的 import, 但不再包含功能性代码.
