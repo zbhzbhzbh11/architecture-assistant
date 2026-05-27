@@ -114,9 +114,6 @@ def score_style(style: Dict[str, Any], features: Dict[str, bool],
             feat_zh = _FEAT_ZH.get(feat, feat)
             hit_reasons.append(f"反向信号: {feat_zh} ({penalty})")
 
-    # 最终夹底: 得分不低于 0
-    score = max(0, score)
-
     return {
         "style": style["name"],
         "style_zh": style.get("name_zh", style["name"]),
@@ -142,7 +139,7 @@ def select_top3(scored: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     mainstream_ranked = [by_name[name] for name in MAINSTREAM_STYLES if name in by_name]
     non_mainstream = [item for item in scored if item["style"] not in MAINSTREAM_STYLES]
 
-    if all(item["score"] == 0 for item in mainstream_ranked):
+    if all(item["score"] <= 0 for item in mainstream_ranked):
         return mainstream_ranked[:3]
 
     top3: List[Dict[str, Any]] = []
