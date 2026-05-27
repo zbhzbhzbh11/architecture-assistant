@@ -128,6 +128,7 @@ pre { background: #111827; color: #f9fafb; border-radius: 10px; padding: 16px; o
 .im-learn td { border-top: 2px solid #fef3c7; background: #fffbeb; }
 .im-learn td:first-child { color: #92400e; font-weight: 500; }
 .im-learn-bonus { color: #92400e; font-weight: 700; background: #fef3c7; padding: 1px 6px; border-radius: 4px; }
+.im-learn-penalty { color: #dc2626; font-weight: 700; background: #fee2e2; padding: 1px 6px; border-radius: 4px; }
 
 /* ── 工作流追踪 ── */
 .workflow-trace { margin-bottom: 8px; }

@@ -78,10 +78,12 @@ def score_style(style: Dict[str, Any], features: Dict[str, bool],
                     score -= 2
                     learning_bonus -= 2
                     hit_reasons.append(f"学习权重(负高): {feat_zh}→{style_name} (-2)")
+                    learned_detail.append(feat_zh)
                 elif w <= -0.4:
                     score -= 1
                     learning_bonus -= 1
                     hit_reasons.append(f"学习权重(负中): {feat_zh}→{style_name} (-1)")
+                    learned_detail.append(feat_zh)
 
     # 3. 7 条特定规则
     if style["name"] == "Event-Driven Architecture" and features.get("high_concurrency"):

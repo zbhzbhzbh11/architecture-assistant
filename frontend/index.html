@@ -273,9 +273,17 @@
           const lb = row ? (row.learning_bonus || 0) : 0;
           const ld = safeArr(row ? row.learned_detail : []);
           const title = lb > 0 ? '历史验证: ' + ld.join('、') : '';
-          html += '<td title="' + title + '">' +
-            (lb > 0 ? '<span class="im-learn-bonus">+' + lb + '</span>' : '<span class="im-zero">&mdash;</span>') +
-            '</td>';
+          let cellHtml;
+          if (lb > 0) {
+            const title = '历史验证: ' + ld.join('、');
+            cellHtml = '<td title="' + title + '"><span class="im-learn-bonus">+' + lb + '</span></td>';
+          } else if (lb < 0) {
+            const title = '历史差评: ' + ld.join('、');
+            cellHtml = '<td title="' + title + '"><span class="im-learn-penalty">' + lb + '</span></td>';
+          } else {
+            cellHtml = '<td><span class="im-zero">&mdash;</span></td>';
+          }
+          html += cellHtml;
         });
         html += '</tr>';
       }
