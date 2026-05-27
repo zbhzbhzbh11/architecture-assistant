@@ -234,13 +234,15 @@ class GraphRepository:
         except Exception as e:
             logger.warning(f"JSON feedback backup skipped: {e}")
 
-        # 3. 从 Neo4j 重新计算权重并持久化到 learned_weights.json
+        # 3. 从 Neo4j 重新计算权重 → 同步 LEARNED_FOR 关系 + JSON 缓存
         try:
             raw = GraphRepository._compute_weights_from_neo4j(features)
             normalized = _normalize_weights(raw)
             from .json_repository import _save_weights
             _save_weights(normalized)
-            logger.info(f"Learned weights recomputed from Neo4j: {len(raw)} dims, normalized")
+            # 关键: 同步 LEARNED_FOR 关系到 Neo4j (避免边孤岛化)
+            GraphRepository._sync_learned_for_edges(normalized)
+            logger.info(f"Learned weights recomputed from Neo4j: {len(raw)} dims, normalized + LEARNED_FOR synced")
         except Exception as e:
             logger.warning(f"Weight recomputation from Neo4j failed: {e}")
 
@@ -404,12 +406,40 @@ class GraphRepository:
         return weights
 
     @staticmethod
+    def _sync_learned_for_edges(normalized: Dict[str, Dict[str, float]]) -> None:
+        """将归一化权重同步到 Neo4j LEARNED_FOR 关系 (防止边孤岛化).
+
+        每次 add_feedback 后调用, 确保图谱中的 LEARNED_FOR 连线
+        反映最新的 Feedback 聚合结果, 而非停留在 init 时刻.
+        """
+        if not normalized:
+            return
+        try:
+            from neo4j import GraphDatabase
+            driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+            with driver.session() as session:
+                for feat, style_map in normalized.items():
+                    for style_name, weight in style_map.items():
+                        if weight > 0:
+                            session.run("""
+                                MATCH (s:ArchitectureStyle {name: $style})
+                                MATCH (q:QualityAttribute {name: $feat})
+                                MERGE (s)-[r:LEARNED_FOR]->(q)
+                                SET r.weight = $weight
+                            """, {"style": style_name, "feat": feat, "weight": weight})
+            driver.close()
+            logger.info(f"LEARNED_FOR edges synced: {sum(len(m) for m in normalized.values())} relationships")
+        except Exception as e:
+            logger.warning(f"LEARNED_FOR sync failed (non-fatal): {e}")
+
+    @staticmethod
     def reset_learned_weights() -> Dict[str, Any]:
-        """清空 Neo4j 中所有 Feedback 节点, 并重置 learned_weights.json."""
+        """清空 Neo4j 中所有 Feedback 节点 + LEARNED_FOR 边, 并重置 JSON."""
         _run_query("MATCH (f:Feedback) DETACH DELETE f")
+        _run_query("MATCH ()-[r:LEARNED_FOR]->() DELETE r")
         from .json_repository import _save_weights
         _save_weights({})
-        logger.info("Learned weights reset: Neo4j + JSON cleared")
+        logger.info("Learned weights reset: Feedback nodes + LEARNED_FOR edges + JSON cleared")
         return {"status": "ok", "message": "learned_weights reset"}
 
     @staticmethod
