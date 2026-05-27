@@ -375,3 +375,8 @@ details summary { font-size: 14px; font-weight: 500; color: var(--accent); }
 
 /* ── 备选反馈按钮 ── */
 .fb-alt { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+.fb-rate { background: #f3f4f6; color: #6b7280; border: 1px solid #d1d5db; }
+.stars-row { display: inline-flex; gap: 2px; margin: 0 8px; vertical-align: middle; }
+.stars-row.hidden { display: none; }
+.star { font-size: 22px; cursor: pointer; color: #d1d5db; user-select: none; transition: color 0.15s; }
+.star:hover { color: #f59e0b; }

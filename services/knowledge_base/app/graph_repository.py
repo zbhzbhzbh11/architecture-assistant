@@ -214,14 +214,15 @@ class GraphRepository:
     @staticmethod
     def add_feedback(requirement: str, recommended_style: str,
                      user_choice: Optional[str], comment: Optional[str],
-                     features: Optional[Dict[str, bool]] = None) -> Optional[Dict[str, Any]]:
+                     features: Optional[Dict[str, bool]] = None,
+                     rating: Optional[int] = None) -> Optional[Dict[str, Any]]:
         """保存反馈: Neo4j 为主存储, JSON 为冷备.
         features: LLM 已提取的 12 维特征 (优先使用, 避免关键词重新提取).
         Neo4j 不可用时返回 None 触发 _repo() fallback 到 JsonRepository."""
         # 1. Neo4j 存储 (主)
         try:
             total = GraphRepository._neo4j_save_feedback(
-                requirement, recommended_style, user_choice, comment, features)
+                requirement, recommended_style, user_choice, comment, features, rating)
         except Exception as e:
             logger.warning(f"Neo4j feedback save failed, will fallback to JSON: {e}")
             return None
@@ -290,7 +291,7 @@ class GraphRepository:
         rows = _run_query(
             "MATCH (f:Feedback)-[:HAS_FEATURE]->(q:QualityAttribute) "
             "RETURN q.name AS feature, f.recommended_style AS style, "
-            "f.timestamp AS timestamp, f.is_confirmed AS is_confirmed"
+            "f.timestamp AS timestamp, f.is_confirmed AS is_confirmed, f.rating AS rating"
         )
         if rows is None:
             return None
@@ -304,8 +305,13 @@ class GraphRepository:
             if not feat or not style:
                 continue
             decay = _decay_weight(ts)
+            rt = row.get("rating")
             is_confirmed = row.get("is_confirmed")
-            multiplier = 1.0 if is_confirmed else -0.5
+            if rt is not None and isinstance(rt, (int, float)) and 1 <= rt <= 5:
+                RATING_MAP = {5: 1.0, 4: 0.5, 3: 0.0, 2: -0.5, 1: -1.0}
+                multiplier = RATING_MAP.get(int(rt), 0.0)
+            else:
+                multiplier = 1.0 if is_confirmed else -0.5
             raw_weights.setdefault(feat, {}).setdefault(style, 0.0)
             raw_weights[feat][style] += decay * multiplier
 
@@ -330,7 +336,8 @@ class GraphRepository:
     @staticmethod
     def _neo4j_save_feedback(requirement: str, recommended_style: str,
                              user_choice: Optional[str], comment: Optional[str],
-                             features: Optional[Dict[str, bool]] = None) -> int:
+                             features: Optional[Dict[str, bool]] = None,
+                             rating: Optional[int] = None) -> int:
         """写入 Feedback 节点 + HAS_FEATURE 关系 (图谱原生建模).
 
         features 不作为数组属性存储, 而是创建:
@@ -346,13 +353,15 @@ class GraphRepository:
                     CREATE (f:Feedback {
                         timestamp: $ts, requirement: $req,
                         recommended_style: $rec, user_choice: $choice,
-                        comment: $comment, is_confirmed: $confirmed
+                        comment: $comment, is_confirmed: $confirmed,
+                        rating: $rating
                     })
                 """, {
                     "ts": datetime.now().isoformat(timespec="seconds"),
                     "req": requirement, "rec": recommended_style,
                     "choice": user_choice, "comment": comment,
                     "confirmed": user_choice == recommended_style,
+                    "rating": rating,
                 })
                 # 图关系: Feedback → QualityAttribute (替代数组属性)
                 for feat in active_features:
@@ -381,7 +390,7 @@ class GraphRepository:
         rows = _run_query(
             "MATCH (f:Feedback)-[:HAS_FEATURE]->(q:QualityAttribute) "
             "RETURN q.name AS feature, f.recommended_style AS style, "
-            "f.timestamp AS timestamp, f.is_confirmed AS is_confirmed"
+            "f.timestamp AS timestamp, f.is_confirmed AS is_confirmed, f.rating AS rating"
         )
         if rows is None:
             return {}
@@ -394,9 +403,15 @@ class GraphRepository:
             if not feat or not style:
                 continue
             decay = _decay_weight(ts)
-            # 确认推荐 → +1.0, 用户选了备选 → -0.5 (惩罚原推荐)
+            # 五星乘数映射: 5→+1.0, 4→+0.5, 3→0, 2→-0.5, 1→-1.0
+            # 无 rating 时回退到 is_confirmed 二值逻辑
+            rt = row.get("rating")
             is_confirmed = row.get("is_confirmed")
-            multiplier = 1.0 if is_confirmed else -0.5
+            if rt is not None and isinstance(rt, (int, float)) and 1 <= rt <= 5:
+                RATING_MAP = {5: 1.0, 4: 0.5, 3: 0.0, 2: -0.5, 1: -1.0}
+                multiplier = RATING_MAP.get(int(rt), 0.0)
+            else:
+                multiplier = 1.0 if is_confirmed else -0.5
             weights.setdefault(feat, {}).setdefault(style, 0.0)
             weights[feat][style] += decay * multiplier
         # 合并当前反馈的 LLM 特征 (尚未写入 Neo4j)

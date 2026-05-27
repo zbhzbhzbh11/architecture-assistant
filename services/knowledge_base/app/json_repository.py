@@ -79,7 +79,8 @@ class JsonRepository:
     @staticmethod
     def add_feedback(requirement: str, recommended_style: str,
                      user_choice: Optional[str], comment: Optional[str],
-                     features: Optional[Dict[str, bool]] = None) -> Dict[str, Any]:
+                     features: Optional[Dict[str, bool]] = None,
+                     rating: Optional[int] = None) -> Dict[str, Any]:
         """记录一条反馈并触发权重学习.
         features: LLM 已提取的 12 维特征 (优先使用)."""
         feedback_list: List[Dict[str, Any]] = []

@@ -111,6 +111,7 @@ class FeedbackPayload(BaseModel):
     user_choice: Optional[str] = None
     comment: Optional[str] = None
     features: Dict[str, bool] = {}
+    rating: Optional[int] = None  # 1-5 星评分, None 表示未使用
 
 
 # ── 模块级兼容函数 (测试和 matching-agent 可能直接 import) ──
@@ -171,7 +172,8 @@ def get_feedback() -> Dict[str, Any]:
 def add_feedback_endpoint(payload: FeedbackPayload) -> Dict[str, Any]:
     return _repo("add_feedback",
                  payload.requirement, payload.recommended_style,
-                 payload.user_choice, payload.comment, payload.features)
+                 payload.user_choice, payload.comment, payload.features,
+                 payload.rating)
 
 @app.get("/feedback/stats")
 def feedback_stats() -> Dict[str, Any]:

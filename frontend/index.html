@@ -85,6 +85,10 @@
               <span class="feedback-label">这个推荐准确吗？</span>
               <button id="feedback-confirm" class="fb-btn fb-confirm">确认</button>
               <span id="feedback-alt-btns"></span>
+              <button id="feedback-rate-toggle" class="fb-btn fb-rate">展开评分</button>
+              <span id="feedback-stars" class="stars-row hidden">
+                <span class="star" data-r="1">☆</span><span class="star" data-r="2">☆</span><span class="star" data-r="3">☆</span><span class="star" data-r="4">☆</span><span class="star" data-r="5">☆</span>
+              </span>
               <button id="feedback-refine" class="fb-btn fb-refine">补充反馈重新推荐</button>
               <div id="feedback-refine-box" class="hidden" style="margin-top:8px">
                 <textarea id="feedback-refine-text" rows="3" placeholder="输入补充需求..."></textarea>
@@ -626,6 +630,68 @@
       $('feedback-confirm').style.opacity = '1';
       $('feedback-msg').innerHTML = '<span class="cache-badge hit">✓ 已重置，下次推荐不受历史反馈影响</span>';
       await loadWeights();
+    });
+
+    // ── 5 星评分交互 ──
+    $('feedback-rate-toggle').addEventListener('click', () => {
+      const row = $('feedback-stars');
+      row.classList.toggle('hidden');
+      if (!row.classList.contains('hidden')) {
+        $('feedback-rate-toggle').innerText = '收起评分';
+      } else {
+        $('feedback-rate-toggle').innerText = '展开评分';
+        // reset stars
+        row.querySelectorAll('.star').forEach(s => s.textContent = '☆');
+      }
+    });
+
+    let _starSelected = 0;
+    document.querySelectorAll('.star').forEach(star => {
+      star.addEventListener('click', async () => {
+        if (_feedbackLocked) return;
+        const rating = parseInt(star.dataset.r);
+        _starSelected = rating;
+        // highlight stars
+        document.querySelectorAll('.star').forEach((s, i) => {
+          s.textContent = i < rating ? '★' : '☆';
+          s.style.color = i < rating ? '#f59e0b' : '#d1d5db';
+        });
+        // submit
+        _feedbackLocked = true;
+        try {
+          const r0 = await fetch(KB_URL + '/feedback/weights');
+          const d0 = await r0.json();
+          _weightsSnapshot = d0.weights || {};
+        } catch (e) { _weightsSnapshot = {}; }
+        $('feedback-msg').innerHTML = '<span class="cache-badge miss">提交 ' + rating + ' 星评分...</span>';
+        try {
+          await fetch(KB_URL + '/feedback', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requirement: _lastReq, recommended_style: _lastRecommended, user_choice: _lastRecommended, comment: rating + '星评分', features: _lastFeatures, rating: rating })
+          });
+          await loadWeights(true);
+          const label = {5:'极佳', 4:'良好', 3:'一般', 2:'较差', 1:'很差'};
+          $('feedback-msg').innerHTML = '<span class="cache-badge hit">已提交 ' + rating + ' 星 (' + label[rating] + '), 权重已更新。</span>';
+          const btns = document.querySelectorAll('#feedback-confirm, .fb-alt');
+          btns.forEach(b => { b.disabled = true; b.style.opacity = '0.5'; });
+        } catch (e) {
+          $('feedback-msg').innerHTML = '<span class="dim-text" style="color:var(--danger)">提交失败</span>';
+          _feedbackLocked = false;
+        }
+      });
+      star.addEventListener('mouseenter', () => {
+        const r = parseInt(star.dataset.r);
+        document.querySelectorAll('.star').forEach((s, i) => {
+          s.textContent = i < r ? '★' : '☆';
+          s.style.color = i < r ? '#f59e0b' : '#d1d5db';
+        });
+      });
+    });
+    document.querySelector('.stars-row').addEventListener('mouseleave', () => {
+      document.querySelectorAll('.star').forEach((s, i) => {
+        s.textContent = i < _starSelected ? '★' : '☆';
+        s.style.color = i < _starSelected ? '#f59e0b' : '#d1d5db';
+      });
     });
 
     // 初始加载权重
