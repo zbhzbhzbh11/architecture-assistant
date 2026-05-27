@@ -289,7 +289,8 @@ class GraphRepository:
         # 图遍历: Feedback → HAS_FEATURE → QualityAttribute
         rows = _run_query(
             "MATCH (f:Feedback)-[:HAS_FEATURE]->(q:QualityAttribute) "
-            "RETURN q.name AS feature, f.recommended_style AS style, f.timestamp AS timestamp"
+            "RETURN q.name AS feature, f.recommended_style AS style, "
+            "f.timestamp AS timestamp, f.is_confirmed AS is_confirmed"
         )
         if rows is None:
             return None
@@ -303,8 +304,10 @@ class GraphRepository:
             if not feat or not style:
                 continue
             decay = _decay_weight(ts)
+            is_confirmed = row.get("is_confirmed")
+            multiplier = 1.0 if is_confirmed else -0.5
             raw_weights.setdefault(feat, {}).setdefault(style, 0.0)
-            raw_weights[feat][style] += decay
+            raw_weights[feat][style] += decay * multiplier
 
         # 2. 归一化
         normalized = _normalize_weights(raw_weights)
@@ -377,7 +380,8 @@ class GraphRepository:
         """
         rows = _run_query(
             "MATCH (f:Feedback)-[:HAS_FEATURE]->(q:QualityAttribute) "
-            "RETURN q.name AS feature, f.recommended_style AS style, f.timestamp AS timestamp"
+            "RETURN q.name AS feature, f.recommended_style AS style, "
+            "f.timestamp AS timestamp, f.is_confirmed AS is_confirmed"
         )
         if rows is None:
             return {}
@@ -390,8 +394,11 @@ class GraphRepository:
             if not feat or not style:
                 continue
             decay = _decay_weight(ts)
+            # 确认推荐 → +1.0, 用户选了备选 → -0.5 (惩罚原推荐)
+            is_confirmed = row.get("is_confirmed")
+            multiplier = 1.0 if is_confirmed else -0.5
             weights.setdefault(feat, {}).setdefault(style, 0.0)
-            weights[feat][style] += decay
+            weights[feat][style] += decay * multiplier
         # 合并当前反馈的 LLM 特征 (尚未写入 Neo4j)
         if current_features:
             active = [k for k, v in current_features.items() if v]
