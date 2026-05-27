@@ -14,7 +14,7 @@
 <body>
   <main class="wrap">
     <h1>架构风格智能助手</h1>
-    <p class="desc">LLM + 知识图谱双驱动 v5 &nbsp;|&nbsp; LangGraph 微服务编排 &nbsp;|&nbsp; 组合架构推荐</p>
+    <p class="desc">LLM + 知识图谱双驱动 &nbsp;|&nbsp; LangGraph 微服务编排 &nbsp;|&nbsp; 组合架构推荐</p>
 
     <textarea id="requirement" rows="6" placeholder="例如：开发跨平台即时通讯系统，支持万人同时在线，消息实时可靠，后续扩展视频通话。"></textarea>
     <button id="submit">开始推荐</button>
@@ -267,22 +267,32 @@
         html += '</tr>';
       });
 
-      // Learning bonus row (知识进化)
-      const hasLearning = rows.some(r => (r.learning_bonus || 0) > 0);
+      // Learning bonus row (知识进化) — comparison_matrix 优先, 回退 _latestWeights
+      const hasLearning = rows.some(r => (r.learning_bonus || 0) !== 0)
+        || Object.keys(_latestWeights).length > 0;
       if (hasLearning) {
         html += '<tr class="im-learn"><td>学习权重</td>';
         colOrder.forEach(style => {
           const row = rows.find(r => r.style === style);
-          const lb = row ? (row.learning_bonus || 0) : 0;
-          const ld = safeArr(row ? row.learned_detail : []);
-          const title = lb > 0 ? '历史验证: ' + ld.join('、') : '';
+          let lb = row ? (row.learning_bonus || 0) : 0;
+          let ld = safeArr(row ? row.learned_detail : []);
+          // comparison_matrix 无学习数据时从全局权重推断
+          if (lb === 0 && ld.length === 0) {
+            activeFeats.forEach(feat => {
+              const w = (_latestWeights[feat] || {})[style];
+              if (w !== undefined) {
+                if (w >= 0.7) { lb += 2; ld.push(FEAT_LABELS[feat] || feat); }
+                else if (w >= 0.4) { lb += 1; ld.push(FEAT_LABELS[feat] || feat); }
+                else if (w <= -0.7) { lb -= 2; ld.push(FEAT_LABELS[feat] || feat); }
+                else if (w <= -0.4) { lb -= 1; ld.push(FEAT_LABELS[feat] || feat); }
+              }
+            });
+          }
           let cellHtml;
           if (lb > 0) {
-            const title = '历史验证: ' + ld.join('、');
-            cellHtml = '<td title="' + title + '"><span class="im-learn-bonus">+' + lb + '</span></td>';
+            cellHtml = '<td title="历史验证: ' + ld.join('、') + '"><span class="im-learn-bonus">+' + lb + '</span></td>';
           } else if (lb < 0) {
-            const title = '历史差评: ' + ld.join('、');
-            cellHtml = '<td title="' + title + '"><span class="im-learn-penalty">' + lb + '</span></td>';
+            cellHtml = '<td title="历史差评: ' + ld.join('、') + '"><span class="im-learn-penalty">' + lb + '</span></td>';
           } else {
             cellHtml = '<td><span class="im-zero">&mdash;</span></td>';
           }
@@ -435,6 +445,7 @@
     let _lastCandidates = [];    // 最后一次推荐的全部候选
     let _lastFeatures = {};      // 最后一次 LLM 提取的特征
     let _weightsSnapshot = {};   // 反馈前的权重快照 — 用于计算 delta
+    let _latestWeights = {};      // 最新权重数据 — 影响分析表查找用
 
     const GATEWAY = 'http://localhost:8000';
     const KB_URL  = 'http://localhost:8004';
@@ -507,6 +518,7 @@
         const r = await fetch(KB_URL + '/feedback/weights');
         const d = await r.json();
         const normW = d.weights || {};
+        _latestWeights = normW;  // 缓存供影响分析表使用
         const entries = Object.entries(normW).filter(([,m]) => Object.keys(m).length);
         const div = $('weights-display');
         if (!entries.length) { div.innerHTML = '<span class="dim-text">暂无学习权重</span>'; return; }
