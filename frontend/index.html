@@ -281,15 +281,16 @@
           const row = rows.find(r => r.style === style);
           let lb = row ? (row.learning_bonus || 0) : 0;
           let ld = safeArr(row ? row.learned_detail : []);
-          // comparison_matrix 无学习数据时从全局权重推断
+          // comparison_matrix 无学习数据时从 raw 权重推断
           if (lb === 0 && ld.length === 0) {
             activeFeats.forEach(feat => {
-              const w = (_latestWeights[feat] || {})[style];
-              if (w !== undefined) {
-                if (w >= 0.7) { lb += 2; ld.push(FEAT_LABELS[feat] || feat); }
-                else if (w >= 0.4) { lb += 1; ld.push(FEAT_LABELS[feat] || feat); }
-                else if (w <= -0.7) { lb -= 2; ld.push(FEAT_LABELS[feat] || feat); }
-                else if (w <= -0.4) { lb -= 1; ld.push(FEAT_LABELS[feat] || feat); }
+              const raw = (_latestRawWeights || {})[feat] || {};
+              const rv = raw[style];
+              if (rv !== undefined) {
+                if (rv >= 1.5) { lb += 2; ld.push(FEAT_LABELS[feat] || feat); }
+                else if (rv >= 0.5) { lb += 1; ld.push(FEAT_LABELS[feat] || feat); }
+                else if (rv <= -1.0) { lb -= 2; ld.push(FEAT_LABELS[feat] || feat); }
+                else if (rv <= -0.5) { lb -= 1; ld.push(FEAT_LABELS[feat] || feat); }
               }
             });
           }
@@ -450,7 +451,8 @@
     let _lastCandidates = [];    // 最后一次推荐的全部候选
     let _lastFeatures = {};      // 最后一次 LLM 提取的特征
     let _weightsSnapshot = {};   // 反馈前的权重快照 — 用于计算 delta
-    let _latestWeights = {};      // 最新权重数据 — 影响分析表查找用
+    let _latestWeights = {};      // 归一化权重 — 前端表格展示用
+    let _latestRawWeights = {};   // raw 计数 — 影响分析表阈值判断用
 
     const GATEWAY = 'http://localhost:8000';
     const KB_URL  = 'http://localhost:8004';
@@ -523,7 +525,9 @@
         const r = await fetch(KB_URL + '/feedback/weights');
         const d = await r.json();
         const normW = d.weights || {};
+        const rawW = d.raw_weights || normW;
         _latestWeights = normW;  // 缓存供影响分析表使用
+        _latestRawWeights = rawW; // raw计数供阈值判断
         const entries = Object.entries(normW).filter(([,m]) => Object.keys(m).length);
         const div = $('weights-display');
         if (!entries.length) { div.innerHTML = '<span class="dim-text">暂无学习权重</span>'; return; }

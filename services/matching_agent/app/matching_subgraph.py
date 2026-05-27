@@ -44,15 +44,18 @@ async def _rule_score_node(state: Dict[str, Any]) -> Dict[str, Any]:
         styles = resp.json()["styles"]
 
         learned_weights: Dict[str, Dict[str, int]] = {}
+        raw_weights: Dict[str, Dict[str, float]] = {}
         try:
             lw_resp = await client.get(f"{KNOWLEDGE_BASE_URL}/feedback/weights")
             lw_resp.raise_for_status()
-            learned_weights = lw_resp.json().get("weights", {})
+            lw_data = lw_resp.json()
+            learned_weights = lw_data.get("weights", {})
+            raw_weights = lw_data.get("raw_weights", {})
         except Exception:
             pass
 
     llm_disputed = state.get("llm_disputed", {})
-    scored = [score_style(s, features, learned_weights, llm_disputed) for s in styles]
+    scored = [score_style(s, features, learned_weights, llm_disputed, raw_weights) for s in styles]
 
     elapsed = round((time.perf_counter() - t0) * 1000)
     top_scores = sorted(scored, key=lambda x: x["score"], reverse=True)[:3]
