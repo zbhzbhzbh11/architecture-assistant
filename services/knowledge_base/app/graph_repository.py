@@ -281,36 +281,32 @@ class GraphRepository:
 
     @staticmethod
     def get_learned_weights() -> Optional[Dict[str, Any]]:
-        """从 Neo4j 反馈数据直接计算学习权重 (Neo4j 为权威数据源).
+        """从 Neo4j HAS_FEATURE 关系直接计算学习权重 (图遍历).
 
-        每条反馈的贡献 = 特征提取 × 时间衰减因子 e^(-0.05 × days).
-        聚合后做特征级 max-normalization, 使不同特征的 bonus 可比.
+        不再使用关键词提取 — 直接查 (f:Feedback)-[:HAS_FEATURE]->(q) 关系,
+        保证与 _compute_weights_from_neo4j 使用相同的特征来源.
         """
-        from .json_repository import _extract_features_from_requirement
-
-        # 查询全部反馈: requirement, recommended_style, timestamp
+        # 图遍历: Feedback → HAS_FEATURE → QualityAttribute
         rows = _run_query(
-            "MATCH (f:Feedback) RETURN f.requirement AS requirement, "
-            "f.recommended_style AS style, f.timestamp AS timestamp"
+            "MATCH (f:Feedback)-[:HAS_FEATURE]->(q:QualityAttribute) "
+            "RETURN q.name AS feature, f.recommended_style AS style, f.timestamp AS timestamp"
         )
         if rows is None:
             return None
 
         # 1. 聚合: 每条反馈加权衰减后累加到 raw 权重
         raw_weights: Dict[str, Dict[str, float]] = {}
-        for row in rows:
-            req = row.get("requirement", "")
+        for row in (rows or []):
+            feat = row.get("feature", "")
             style = row.get("style", "")
             ts = row.get("timestamp")
-            if not req or not style:
+            if not feat or not style:
                 continue
-            features = _extract_features_from_requirement(req)
-            decay = _decay_weight(ts)  # 时间衰减: 0~1
-            for feat in features:
-                raw_weights.setdefault(feat, {}).setdefault(style, 0.0)
-                raw_weights[feat][style] += decay  # 不再 +1, 加衰减值
+            decay = _decay_weight(ts)
+            raw_weights.setdefault(feat, {}).setdefault(style, 0.0)
+            raw_weights[feat][style] += decay
 
-        # 2. 归一化: 每个特征维度下除以最大值
+        # 2. 归一化
         normalized = _normalize_weights(raw_weights)
 
         # 3. 统计
@@ -320,8 +316,8 @@ class GraphRepository:
                 style_learn_counts[style_name] = style_learn_counts.get(style_name, 0) + int(count)
 
         return {
-            "weights": normalized,            # float, 归一化后 → score_style 使用
-            "raw_weights": raw_weights,       # float, 带衰减的原始值 → 前端表格展示
+            "weights": normalized,
+            "raw_weights": raw_weights,
             "total_feedback_learned": sum(style_learn_counts.values()),
             "style_learn_counts": style_learn_counts,
         }
