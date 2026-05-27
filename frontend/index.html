@@ -553,7 +553,7 @@
         const r = await fetch(KB_URL + '/feedback', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requirement: _lastReq, recommended_style: _lastRecommended, user_choice: _lastRecommended, comment: '', features: _lastFeatures })
+          body: JSON.stringify({ requirement: _lastReq, recommended_style: _lastRecommended, user_choice: _lastRecommended, comment: '', features: _lastFeatures, rating: 4 })
         });
         const d = await r.json();
         // 2. 加载新权重 + 显示 delta
