@@ -84,6 +84,7 @@
             <div id="feedback-prompt" class="hidden">
               <span class="feedback-label">这个推荐准确吗？</span>
               <button id="feedback-confirm" class="fb-btn fb-confirm">确认</button>
+              <span id="feedback-alt-btns"></span>
               <button id="feedback-refine" class="fb-btn fb-refine">补充反馈重新推荐</button>
               <div id="feedback-refine-box" class="hidden" style="margin-top:8px">
                 <textarea id="feedback-refine-text" rows="3" placeholder="输入补充需求..."></textarea>
@@ -440,7 +441,46 @@
     function showFeedbackPrompt(show) {
       const p = $('feedback-prompt');
       p.classList.toggle('hidden', !show);
-      if (!show) { $('feedback-refine-box').classList.add('hidden'); $('feedback-msg').innerHTML = ''; }
+      if (!show) { $('feedback-refine-box').classList.add('hidden'); $('feedback-msg').innerHTML = ''; return; }
+      // 生成备选风格按钮
+      const altDiv = $('feedback-alt-btns');
+      const alts = _lastCandidates.filter(c => c.style !== _lastRecommended);
+      if (alts.length) {
+        altDiv.innerHTML = alts.map(c =>
+          '<button class="fb-btn fb-alt" data-style="' + c.style + '">选「' +
+          safeStr(c.style_zh, c.style) + '」</button>'
+        ).join(' ');
+        altDiv.querySelectorAll('.fb-alt').forEach(btn => {
+          btn.addEventListener('click', () => doAltSelect(btn.dataset.style));
+        });
+      } else {
+        altDiv.innerHTML = '';
+      }
+    }
+
+    async function doAltSelect(style) {
+      if (_feedbackLocked) return;
+      _feedbackLocked = true;
+      try {
+        const r0 = await fetch(KB_URL + '/feedback/weights');
+        const d0 = await r0.json();
+        _weightsSnapshot = d0.weights || {};
+      } catch (e) { _weightsSnapshot = {}; }
+
+      $('feedback-msg').innerHTML = '<span class="cache-badge miss">提交备选反馈...</span>';
+      try {
+        const r = await fetch(KB_URL + '/feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requirement: _lastReq, recommended_style: _lastRecommended, user_choice: style, comment: '用户选择备选风格', features: _lastFeatures })
+        });
+        await loadWeights(true);
+        $('feedback-msg').innerHTML = '<span class="cache-badge hit">已记录: 您认为 <strong>' + style + '</strong> 更适合此场景。原推荐权重已调整。</span>';
+        document.querySelectorAll('.fb-btn').forEach(b => { b.disabled = true; b.style.opacity = '0.5'; });
+      } catch (e) {
+        $('feedback-msg').innerHTML = '<span class="dim-text" style="color:var(--danger)">提交失败</span>';
+        _feedbackLocked = false;
+      }
     }
 
     async function loadWeights(showDelta) {

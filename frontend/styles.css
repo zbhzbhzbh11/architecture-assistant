@@ -372,3 +372,6 @@ details summary { font-size: 14px; font-weight: 500; color: var(--accent); }
 .ge-scenario .ge-icon { color: #d97706; }
 .ge-risk .ge-icon { color: #dc2626; }
 .ge-combo .ge-icon { color: #7c3aed; }
+
+/* ── 备选反馈按钮 ── */
+.fb-alt { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
