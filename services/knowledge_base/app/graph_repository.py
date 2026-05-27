@@ -403,12 +403,11 @@ class GraphRepository:
             if not feat or not style:
                 continue
             decay = _decay_weight(ts)
-            # 五星乘数映射: 5→+1.0, 4→+0.5, 3→0, 2→-0.5, 1→-1.0
-            # 无 rating 时回退到 is_confirmed 二值逻辑
+            # 五星→方向乘数: 5→+1.0, 4→+0.5, 3→0, 2→-1.0, 1→-2.0
             rt = row.get("rating")
             is_confirmed = row.get("is_confirmed")
             if rt is not None and isinstance(rt, (int, float)) and 1 <= rt <= 5:
-                RATING_MAP = {5: 1.0, 4: 0.5, 3: 0.0, 2: -0.5, 1: -1.0}
+                RATING_MAP = {5: 1.0, 4: 0.5, 3: 0.0, 2: -1.0, 1: -2.0}
                 multiplier = RATING_MAP.get(int(rt), 0.0)
             else:
                 multiplier = 1.0 if is_confirmed else -0.5

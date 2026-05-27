@@ -74,6 +74,14 @@ def score_style(style: Dict[str, Any], features: Dict[str, bool],
                     learning_bonus += 1
                     hit_reasons.append(f"学习权重(中): {feat_zh}→{style_name} (+1)")
                     learned_detail.append(feat_zh)
+                elif w <= -0.7:
+                    score -= 2
+                    learning_bonus -= 2
+                    hit_reasons.append(f"学习权重(负高): {feat_zh}→{style_name} (-2)")
+                elif w <= -0.4:
+                    score -= 1
+                    learning_bonus -= 1
+                    hit_reasons.append(f"学习权重(负中): {feat_zh}→{style_name} (-1)")
 
     # 3. 7 条特定规则
     if style["name"] == "Event-Driven Architecture" and features.get("high_concurrency"):
@@ -100,9 +108,12 @@ def score_style(style: Dict[str, Any], features: Dict[str, bool],
     for feat, is_active in features.items():
         if is_active and feat in penalty_tags:
             penalty = penalty_tags[feat]
-            score = max(0, score + penalty)  # penalty 为负值, 不低于0
+            score += penalty  # 负值累加, 最后统一夹底
             feat_zh = _FEAT_ZH.get(feat, feat)
             hit_reasons.append(f"反向信号: {feat_zh} ({penalty})")
+
+    # 最终夹底: 得分不低于 0
+    score = max(0, score)
 
     return {
         "style": style["name"],
