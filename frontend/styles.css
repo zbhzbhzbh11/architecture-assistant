@@ -125,6 +125,9 @@ pre { background: #111827; color: #f9fafb; border-radius: 10px; padding: 16px; o
 .im-table th { font-size: 11px; padding: 4px 6px; text-align: center; }
 .im-table td { padding: 4px 6px; }
 .im-vote td { border-top: 2px solid #d1d5db; background: #f0fdfa; }
+.im-learn td { border-top: 2px solid #fef3c7; background: #fffbeb; }
+.im-learn td:first-child { color: #92400e; font-weight: 500; }
+.im-learn-bonus { color: #92400e; font-weight: 700; background: #fef3c7; padding: 1px 6px; border-radius: 4px; }
 
 /* ── 工作流追踪 ── */
 .workflow-trace { margin-bottom: 8px; }

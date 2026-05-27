@@ -267,6 +267,22 @@
         html += '</tr>';
       });
 
+      // Learning bonus row (知识进化)
+      const hasLearning = rows.some(r => (r.learning_bonus || 0) > 0);
+      if (hasLearning) {
+        html += '<tr class="im-learn"><td>学习权重</td>';
+        colOrder.forEach(style => {
+          const row = rows.find(r => r.style === style);
+          const lb = row ? (row.learning_bonus || 0) : 0;
+          const ld = safeArr(row ? row.learned_detail : []);
+          const title = lb > 0 ? '历史验证: ' + ld.join('、') : '';
+          html += '<td title="' + title + '">' +
+            (lb > 0 ? '<span class="im-learn-bonus">+' + lb + '</span>' : '<span class="im-zero">&mdash;</span>') +
+            '</td>';
+        });
+        html += '</tr>';
+      }
+
       // LLM vote row
       html += '<tr class="im-vote"><td>LLM 投票</td>';
       colOrder.forEach(style => {
