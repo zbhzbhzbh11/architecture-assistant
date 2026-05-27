@@ -473,22 +473,16 @@
 
       $('feedback-msg').innerHTML = '<span class="cache-badge miss">提交备选反馈...</span>';
       try {
-        // 1: 惩罚原推荐 (is_confirmed=false → multiplier=-0.5)
+        // 确认备选风格 (rating=4 与"确认"按钮同级别)
         await fetch(KB_URL + '/feedback', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requirement: _lastReq, recommended_style: _lastRecommended, user_choice: style, comment: '用户未选此推荐', features: _lastFeatures })
-        });
-        // 2: 确认备选风格 (is_confirmed=true → multiplier=+1.0)
-        await fetch(KB_URL + '/feedback', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requirement: _lastReq, recommended_style: style, user_choice: style, comment: '用户选择备选为正选', features: _lastFeatures })
+          body: JSON.stringify({ requirement: _lastReq, recommended_style: style, user_choice: style, comment: '用户选择备选为正选', features: _lastFeatures, rating: 4 })
         });
         await loadWeights(true);
-        $('feedback-msg').innerHTML = '<span class="cache-badge hit">已调整: 降低 <strong>' + _lastRecommended + '</strong> 权重, 提升 <strong>' + style + '</strong> 权重。</span>';
+        $('feedback-msg').innerHTML = '<span class="cache-badge hit">已记录: 您认为 <strong>' + style + '</strong> 更适合此场景。如需惩罚原推荐, 请使用 1-2★ 评分。</span>';
         // 只禁用确认和备选按钮 (不影响缓存/权重/补充反馈按钮)
-        const btns = document.querySelectorAll('#feedback-confirm, .fb-alt');
+        const btns = document.querySelectorAll('#feedback-confirm, .fb-alt, #feedback-rate-toggle');
         btns.forEach(b => { b.disabled = true; b.style.opacity = '0.5'; });
       } catch (e) {
         $('feedback-msg').innerHTML = '<span class="dim-text" style="color:var(--danger)">提交失败</span>';
