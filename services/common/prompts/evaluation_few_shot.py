@@ -97,26 +97,12 @@ EXAMPLES: List[Dict[str, str]] = [
 
 
 def build_few_shot_prompt(
-    requirement: str, best_style: str, alt_styles: str, candidates_json: str
+    requirement: str, best_style: str, alt_styles: str,
+    candidates_json: str, learning_info: str = ""
 ) -> str:
     """构建含 3 个 few-shot 示例的架构评审 prompt.
 
-    【算法】
-    1. 遍历 EXAMPLES, 每条展示: 原需求 + 推荐风格 + 完整报告
-    2. 在示例后追加当前用户的需求、推荐风格、候选详情
-    3. 要求 LLM 参照示例的格式和风格输出
-
-    【输出结构】
-    四段式固定格式:
-      1. 推荐架构 (核心推荐 + 备选)
-      2. 推荐理由 (2-3条要点)
-      3. 优缺点分析 (√ 优点, × 缺点)
-      4. 风险与建议 (风险 + 建议)
-
-    【为什么 3 个示例而不是 1 个或 6 个】
-      1 个 → LLM 倾向复制示例中的具体内容而非推理
-      6 个 → token 消耗大, 对于格式约束来说过度
-      3 个 → 恰好覆盖三种主流风格 + 展示不同领域表述
+    learning_info: 历史经验加成信息, 含在 prompt 中供 LLM 生成【历史经验验证】段落.
     """
     shot_lines = ["以下是一些架构评审报告的参考示例，请注意输出的结构和专业表述：", ""]
 
@@ -129,10 +115,22 @@ def build_few_shot_prompt(
 
     few_shot_block = "\n".join(shot_lines)
 
-    # 在实际需求前追加当前上下文, 要求按示例格式输出
+    # 历史经验段落指令
+    learning_section = ""
+    if learning_info:
+        learning_section = (
+            "\n*** 重要 ***\n"
+            "该系统具备知识进化能力。以下候选架构包含「学习加成」分数，"
+            "这是历史用户反馈验证的结果。\n"
+            "请在报告中增加【历史经验验证】段落，说明该架构的得分"
+            "受到了过去类似案例的正向影响，证明其具备很高的落地可行性。\n"
+            f"{learning_info}\n\n"
+        )
+
     prompt = (
         f"{few_shot_block}\n"
         "---\n"
+        f"{learning_section}"
         "现在，请根据以下用户需求和候选架构，参照上述示例的风格和结构，用中文输出：\n\n"
         "1. 推荐架构：【核心推荐】和【备选架构】\n"
         "2. 推荐理由：（2-3条要点）\n"

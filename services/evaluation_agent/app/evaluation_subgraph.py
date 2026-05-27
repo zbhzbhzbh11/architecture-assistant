@@ -147,9 +147,21 @@ async def llm_summary(requirement: str, candidates: List[Dict[str, Any]], best_s
     alt_styles = ", ".join(alt_names[:2]) if alt_names else "none"
     candidates_json = json.dumps(candidates, ensure_ascii=False)
 
+    # 提取学习加成信息
+    learning_info = ""
+    for c in candidates:
+        lb = c.get("learning_bonus", 0)
+        if lb > 0:
+            detail = c.get("learned_detail", [])
+            learning_info += (
+                f"\n【历史经验】{c.get('style', '')}: 学习加成 +{lb} 分 "
+                f"(历史相似案例验证了: {', '.join(detail) if detail else '多项特征'})"
+            )
+            best_learning = {"bonus": lb, "detail": detail, "style": c.get("style", "")}
+
     try:
         from common.prompts.evaluation_few_shot import build_few_shot_prompt
-        prompt = build_few_shot_prompt(requirement, best_style, alt_styles, candidates_json)
+        prompt = build_few_shot_prompt(requirement, best_style, alt_styles, candidates_json, learning_info)
     except ImportError:
         prompt = (
             "You are a senior software architecture reviewer. Output in Chinese.\n\n"
@@ -158,12 +170,21 @@ async def llm_summary(requirement: str, candidates: List[Dict[str, Any]], best_s
             "3. Pros and cons\n"
             "4. Risks and suggestions\n\n"
             f"Requirement: {requirement}\nPrimary: {best_style}\nAlternate: {alt_styles}\n"
-            f"Candidates: {candidates_json}\n"
+            f"Candidates: {candidates_json}\n{learning_info}\n"
         )
+
+    system_prompt = (
+        "You are a senior software architecture reviewer. Output in Chinese."
+        + (" IMPORTANT: If the candidate architecture has a learning_bonus "
+           "(historical experience bonus), you MUST add a dedicated section "
+           "titled 【历史经验验证】 in your report. Explain that this bonus "
+           "comes from past similar cases confirming the architecture's viability."
+           if learning_info else "")
+    )
 
     headers = {"Authorization": f"Bearer {LLM_API_KEY}", "Content-Type": "application/json"}
     body = {"model": LLM_MODEL, "messages": [
-        {"role": "system", "content": "You are a senior software architecture reviewer. Output in Chinese."},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": prompt},
     ], "temperature": 0.3}
 
@@ -179,18 +200,33 @@ async def llm_summary(requirement: str, candidates: List[Dict[str, Any]], best_s
 
 def _fallback_summary(best_style: str, candidates: List[Dict[str, Any]]) -> str:
     alt = [c.get("style") for c in candidates if c.get("style") != best_style][:2]
-    best_pros = next((c.get("pros_zh", c.get("pros", [])) for c in candidates if c.get("style") == best_style), [])
-    best_cons = next((c.get("cons_zh", c.get("cons", [])) for c in candidates if c.get("style") == best_style), [])
-    lines = [f"1. 推荐架构：{best_style}（核心推荐）"]
+    best_cand = next((c for c in candidates if c.get("style") == best_style), {})
+    best_pros = best_cand.get("pros_zh", best_cand.get("pros", []))
+    best_cons = best_cand.get("cons_zh", best_cand.get("cons", []))
+    learning_bonus = best_cand.get("learning_bonus", 0)
+    learned_detail = best_cand.get("learned_detail", [])
+
+    lines = [f"1. 推荐架构：{best_style}（核心推荐 | 总分: {best_cand.get('score', '?')}分）"]
     if alt:
         lines.append(f"   备选架构：{'、'.join(alt)}")
     lines.append("")
     lines.append("2. 推荐理由：")
-    reasons = next((c.get("reasons", []) for c in candidates if c.get("style") == best_style), [])
+    reasons = best_cand.get("reasons", [])
     for r in _localize_reasons(reasons)[:3]:
         lines.append(f"   - {r}")
-    lines.append("")
-    lines.append("3. 优缺点分析：")
+    # 历史经验验证
+    if learning_bonus > 0:
+        lines.append("")
+        lines.append(f"3. 【历史经验验证】(系统自我进化加成: +{learning_bonus}分)：")
+        detail_text = "、".join(learned_detail) if learned_detail else "多项特征"
+        lines.append(f"   系统知识库检测到在历史上具有类似特征（{detail_text}）的真实案例中，")
+        lines.append(f"   采用「{best_style}」取得了显著成功。这种由实践经验反哺的加分，")
+        lines.append(f"   进一步印证了该架构是您当前需求的最佳选择。")
+        lines.append("")
+        lines.append("4. 优缺点分析：")
+    else:
+        lines.append("")
+        lines.append("3. 优缺点分析：")
     if best_pros:
         lines.append(f"   √ 优点：{'、'.join(best_pros)}")
     if best_cons:
@@ -261,6 +297,8 @@ async def _merge_node(state: Dict[str, Any]) -> Dict[str, Any]:
         comparison_matrix.append({
             "style": item["style"], "style_zh": item.get("style_zh", item["style"]),
             "score": item["score"],
+            "learning_bonus": item.get("learning_bonus", 0),
+            "learned_detail": item.get("learned_detail", []),
             "recommendation_type": "核心推荐" if i == 0 else "备选架构",
             "pros": item.get("pros", []), "pros_zh": item.get("pros_zh", []),
             "cons": item.get("cons", []), "cons_zh": item.get("cons_zh", []),

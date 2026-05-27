@@ -53,6 +53,8 @@ def score_style(style: Dict[str, Any], features: Dict[str, bool],
                 hit_reasons.append(f"特征匹配: {zh}")
 
     # 2. 学习权重分 — 带衰减 + 归一化 (值域 [0,1])
+    learning_bonus = 0
+    learned_detail: List[str] = []
     if learned_weights:
         style_name = style["name"]
         for feat, is_active in features.items():
@@ -61,10 +63,14 @@ def score_style(style: Dict[str, Any], features: Dict[str, bool],
                 feat_zh = _FEAT_ZH.get(feat, feat)
                 if w >= 0.5:
                     score += 1
+                    learning_bonus += 1
                     hit_reasons.append(f"学习权重(强): {feat_zh}→{style_name}")
+                    learned_detail.append(feat_zh)
                 elif w >= 0.3:
                     score += 1
+                    learning_bonus += 1
                     hit_reasons.append(f"学习权重(中): {feat_zh}→{style_name}")
+                    learned_detail.append(feat_zh)
 
     # 3. 7 条特定规则
     if style["name"] == "Event-Driven Architecture" and features.get("high_concurrency"):
@@ -100,6 +106,8 @@ def score_style(style: Dict[str, Any], features: Dict[str, bool],
         "style_zh": style.get("name_zh", style["name"]),
         "score": score,
         "reasons": hit_reasons,
+        "learning_bonus": learning_bonus,
+        "learned_detail": learned_detail,
         "pros": style.get("pros", []),
         "pros_zh": style.get("pros_zh", []),
         "cons": style.get("cons", []),
