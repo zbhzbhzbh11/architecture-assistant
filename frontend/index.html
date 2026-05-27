@@ -483,7 +483,9 @@
         });
         await loadWeights(true);
         $('feedback-msg').innerHTML = '<span class="cache-badge hit">已调整: 降低 <strong>' + _lastRecommended + '</strong> 权重, 提升 <strong>' + style + '</strong> 权重。</span>';
-        document.querySelectorAll('.fb-btn').forEach(b => { b.disabled = true; b.style.opacity = '0.5'; });
+        // 只禁用确认和备选按钮 (不影响缓存/权重/补充反馈按钮)
+        const btns = document.querySelectorAll('#feedback-confirm, .fb-alt');
+        btns.forEach(b => { b.disabled = true; b.style.opacity = '0.5'; });
       } catch (e) {
         $('feedback-msg').innerHTML = '<span class="dim-text" style="color:var(--danger)">提交失败</span>';
         _feedbackLocked = false;
