@@ -654,3 +654,39 @@ class GraphRepository:
     def get_adr(adr_id: str) -> Optional[Dict[str, Any]]:
         from .json_repository import JsonRepository
         return JsonRepository.get_adr(adr_id)
+
+    @staticmethod
+    def adr_stats() -> Optional[Dict[str, Any]]:
+        """ADR 决策统计: 风格推荐频次 + 特征→风格关联 (Neo4j 多跳查询)."""
+        try:
+            from neo4j import GraphDatabase
+            driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+            with driver.session() as session:
+                # 风格推荐频次
+                style_freq = session.run("""
+                    MATCH (adr:ADR)-[:RECOMMENDS]->(s:ArchitectureStyle)
+                    RETURN s.name AS style, s.name_zh AS style_zh, count(adr) AS cnt
+                    ORDER BY cnt DESC
+                """)
+                style_stats = [{"style": r["style"], "style_zh": r.get("style_zh", r["style"]),
+                                "count": r["cnt"]} for r in style_freq]
+
+                # 特征→风格决策关联
+                feat_style = session.run("""
+                    MATCH (adr:ADR)-[:RECOMMENDS]->(s:ArchitectureStyle)
+                    MATCH (adr)-[:BASED_ON]->(q:QualityAttribute)
+                    RETURN q.name AS feature, s.name AS style, count(adr) AS cnt
+                    ORDER BY cnt DESC
+                """)
+                feat_stats = [{"feature": r["feature"], "style": r["style"],
+                               "count": r["cnt"]} for r in feat_style]
+
+                # 总决策数
+                total = session.run("MATCH (adr:ADR) RETURN count(adr) AS cnt").single()["cnt"]
+
+            driver.close()
+            return {"total_decisions": total, "style_stats": style_stats,
+                    "feature_style_stats": feat_stats[:20]}
+        except Exception as e:
+            logger.warning(f"Neo4j adr_stats failed: {e}")
+            return None

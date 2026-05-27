@@ -102,29 +102,81 @@ async def _top3_select_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def _combo_rank_node(state: Dict[str, Any]) -> Dict[str, Any]:
-    """子节点 3: 组合推荐评分排序."""
+    """子节点 3: 组合推荐 — 动态发现 (Neo4j COMPLEMENTS) + JSON fallback."""
     t0 = time.perf_counter()
+    candidates = state.get("candidates", [])
     blended = state.get("blended", [])
-    graph_evidence = state.get("graph_evidence") or {}
     features = state.get("features", {})
 
     combo_candidates: List[Dict[str, Any]] = []
+    candidate_names = [c["style"] for c in candidates]
+
+    # 1. 从 Neo4j COMPLEMENTS 动态发现组合
+    dynamic_combos: List[Dict[str, Any]] = []
+    try:
+        async with httpx.AsyncClient(timeout=8.0, trust_env=False) as client:
+            # 查询 Top3 候选之间的 COMPLEMENTS 关系
+            resp = await client.post(
+                f"{KNOWLEDGE_BASE_URL}/graph/match",
+                json={"features": features},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("available"):
+                    # 从图谱评分结果中提取 combinable_styles
+                    graph_scored = data.get("scored", [])
+                    for gs in graph_scored:
+                        style_name = gs.get("style", "")
+                        if style_name in candidate_names:
+                            for combo_style in gs.get("combinable_styles", []):
+                                if combo_style in candidate_names and style_name < combo_style:
+                                    dynamic_combos.append({
+                                        "name": f"{style_name} + {combo_style}",
+                                        "name_zh": next((c.get("style_zh", c["style"])
+                                            for c in candidates if c["style"] == style_name), style_name)
+                                            + " + " + next((c.get("style_zh", c["style"])
+                                            for c in candidates if c["style"] == combo_style), combo_style),
+                                        "styles": [style_name, combo_style],
+                                        "tags": features.keys(),
+                                        "best_for": [], "best_for_zh": [],
+                                        "synergy": "COMPLEMENTS 关系确认的组合",
+                                        "synergy_zh": f"图谱确认: {style_name} 与 {combo_style} 可互补组合",
+                                        "complexity_penalty": 1,
+                                        "topology_mermaid": "",
+                                    })
+    except Exception as e:
+        logger.warning(f"[subgraph] Dynamic combo discovery failed: {e}")
+
+    # 2. JSON 预定义组合 (补充协同描述/拓扑图)
+    json_combos: List[Dict[str, Any]] = []
     try:
         async with httpx.AsyncClient(timeout=5.0, trust_env=False) as client:
             resp = await client.get(f"{KNOWLEDGE_BASE_URL}/combinations")
             resp.raise_for_status()
-            combos = resp.json().get("combinations", [])
-
-        if combos:
-            scored_by_name = {item["style"]: item for item in blended}
-            combo_candidates = rank_combinations(
-                combos, scored_by_name, features, graph_evidence, top_n=3,
-            )
+            json_combos = resp.json().get("combinations", [])
     except Exception as e:
-        logger.warning(f"[subgraph] Combination ranking failed (non-fatal): {e}")
+        logger.warning(f"[subgraph] JSON combo fetch failed: {e}")
+
+    # 3. 合并: 动态组合优先, JSON 补充 (去重)
+    all_combos = dynamic_combos.copy()
+    seen_pairs = {tuple(sorted(c["styles"])) for c in dynamic_combos}
+    for jc in json_combos:
+        jc_pair = tuple(sorted(jc.get("styles", [])))
+        if jc_pair not in seen_pairs:
+            all_combos.append(jc)
+            seen_pairs.add(jc_pair)
+
+    if all_combos:
+        scored_by_name = {item["style"]: item for item in blended}
+        combo_candidates = rank_combinations(
+            all_combos, scored_by_name, features, {}, top_n=3,
+        )
 
     elapsed = round((time.perf_counter() - t0) * 1000)
-    logger.info(f"[subgraph] combo_rank done: {len(combo_candidates)} combinations, {elapsed}ms")
+    combo_detail = []
+    for cc in combo_candidates[:3]:
+        combo_detail.append(f"{cc.get('combination_name_zh', cc.get('combination_name', '?'))}={cc.get('combo_score', 0)}")
+    logger.info(f"[subgraph] combo_rank done: {combo_detail} (dynamic={len(dynamic_combos)}, json={len(json_combos)}), {elapsed}ms")
     return {"combination_candidates": combo_candidates, "_trace_combo_rank": elapsed}
 
 

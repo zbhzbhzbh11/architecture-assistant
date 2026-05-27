@@ -231,6 +231,16 @@ def create_adr(payload: ADRPayload) -> Dict[str, Any]:
 def list_adrs(limit: int = 20) -> Dict[str, Any]:
     return _repo("get_adrs", limit)
 
+@app.get("/adr/stats")
+def adr_stats() -> Dict[str, Any]:
+    """ADR 决策统计: 风格推荐频次 + 特征→风格关联 (Neo4j 多跳查询)."""
+    if _prefer_graph():
+        result = GraphRepository.adr_stats()
+        if result is not None:
+            return result
+    return JsonRepository.adr_stats()
+
+
 @app.get("/combinations")
 def get_combinations() -> Dict[str, Any]:
     return _repo("get_combinations")

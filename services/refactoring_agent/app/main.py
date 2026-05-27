@@ -145,14 +145,67 @@ REFACTORING_PATTERNS = {
 
 # ── 规则检测 ──────────────────────────────────────────────────
 
+async def llm_detect_smells(requirement: str) -> Optional[List[Dict[str, Any]]]:
+    """LLM 主导的架构坏味检测 — 识别隐含重构需求.
+
+    返回 5 种坏味的检测结果 + 证据, LLM 不可用时返回 None.
+    """
+    if not (LLM_API_BASE and LLM_API_KEY and LLM_MODEL):
+        return None
+
+    smell_defs = "\n".join(
+        f"  · {s['name_zh']}: {s['description']}"
+        for s in ARCHITECTURE_SMELLS.values()
+    )
+    prompt = (
+        "你是一位软件架构评估专家。以下是 5 种架构坏味的定义:\n"
+        f"{smell_defs}\n\n"
+        f"请分析以下需求文本，判断是否存在这些坏味。\n"
+        "返回严格的 JSON 数组，每项包含 id (使用英文字段名)、detected (bool)、evidence (简短中文证据):\n"
+        '[{"id": "monolith_coupling", "detected": true/false, "evidence": "..."}, ...]\n\n'
+        f"需求文本: {requirement}\n"
+    )
+
+    headers = {"Authorization": f"Bearer {LLM_API_KEY}", "Content-Type": "application/json"}
+    body = {
+        "model": LLM_MODEL,
+        "messages": [
+            {"role": "system", "content": "You are a software architecture assessment expert. Output only JSON array."},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.1,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0, trust_env=False) as client:
+            resp = await client.post(f"{LLM_API_BASE}/chat/completions", headers=headers, json=body)
+            resp.raise_for_status()
+            data = resp.json()
+            raw_text = data["choices"][0]["message"]["content"].strip()
+            if raw_text.startswith("```"):
+                raw_text = raw_text.split("\n", 1)[-1].rsplit("```", 1)[0]
+            results = json.loads(raw_text)
+            detected = [
+                {"id": r["id"], "name_zh": ARCHITECTURE_SMELLS[r["id"]]["name_zh"],
+                 "description": ARCHITECTURE_SMELLS[r["id"]]["description"],
+                 "evidence": r.get("evidence", ""), "source": "llm"}
+                for r in results if isinstance(r, dict) and r.get("detected")
+            ]
+            logger.info(f"LLM detected {len(detected)} architecture smells")
+            return detected if detected else []
+    except Exception as e:
+        logger.warning(f"LLM smell detection failed (will fallback to keywords): {e}")
+        return None
+
+
 def detect_smells(requirement: str, features: Dict[str, bool]) -> List[Dict[str, Any]]:
-    """基于关键词和特征维度检测架构坏味."""
+    """关键词规则检测架构坏味 — LLM 不可用时的 fallback."""
     detected: List[Dict[str, Any]] = []
-    text_lower = requirement.lower()
 
     for key, smell in ARCHITECTURE_SMELLS.items():
         if any(kw in requirement for kw in smell["keywords"]):
-            detected.append({"id": key, "name_zh": smell["name_zh"], "description": smell["description"]})
+            detected.append({"id": key, "name_zh": smell["name_zh"],
+                             "description": smell["description"], "evidence": f"关键词匹配: {smell['keywords']}", "source": "keyword"})
 
     return detected
 
@@ -320,8 +373,10 @@ async def refactor(payload: RefactorRequest) -> Dict[str, Any]:
     rec_style = payload.recommended_style
     rec_combo = payload.recommended_combination
 
-    # 1. 规则引擎检测
-    smells = detect_smells(req, features)
+    # 1. LLM 优先检测坏味, 关键词 fallback
+    smells = await llm_detect_smells(req)
+    if smells is None:
+        smells = detect_smells(req, features)
     patterns = select_patterns(req, features, rec_style, smells)
 
     # 2. 生成规则模板

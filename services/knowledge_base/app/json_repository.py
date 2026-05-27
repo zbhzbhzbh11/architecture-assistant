@@ -324,6 +324,32 @@ class JsonRepository:
                 return r
         return None
 
+    @staticmethod
+    def adr_stats() -> Dict[str, Any]:
+        """JSON fallback: 从 adr_records.json 统计决策数据."""
+        from collections import Counter
+        path = JsonRepository._ADR_PATH
+        if not path.exists():
+            return {"total_decisions": 0, "style_stats": [], "feature_style_stats": []}
+        with open(path, "r", encoding="utf-8") as f:
+            records = json.load(f)
+        style_counter = Counter()
+        feat_style_counter = Counter()
+        for r in records:
+            style = r.get("recommended_style", "")
+            if style:
+                style_counter[style] += 1
+            features = r.get("extracted_features", {})
+            for feat, val in features.items():
+                if val and style:
+                    feat_style_counter[(feat, style)] += 1
+        style_stats = [{"style": s, "count": c}
+                       for s, c in style_counter.most_common()]
+        feat_stats = [{"feature": k[0], "style": k[1], "count": v}
+                      for k, v in feat_style_counter.most_common(20)]
+        return {"total_decisions": len(records), "style_stats": style_stats,
+                "feature_style_stats": feat_stats}
+
 
 # ── 内部辅助函数 ──────────────────────────────────────────────
 
