@@ -147,6 +147,10 @@
       'Serverless':                 {zh:'无服务器架构', tags:['scalability','real_time'], penalty:{}},
       'Space-Based':                {zh:'空间架构', tags:['high_concurrency','reliability'], penalty:{resource_constrained:-4}},
       'Client-Server':              {zh:'客户端-服务器架构', tags:['deployment_constraint','strict_consistency','simple_crud'], penalty:{high_concurrency:-4,scalability:-3,team_size_large:-4}},
+      'Batch-Sequential':          {zh:'批处理架构', tags:['data_intensive','resource_constrained'], penalty:{real_time:-3,high_concurrency:-2}},
+      'Object-Oriented Architecture': {zh:'面向对象架构', tags:['complex_business','team_size_large','scalability'], penalty:{simple_crud:-2,resource_constrained:-1}},
+      'Repository Architecture':   {zh:'仓库架构', tags:['data_intensive','scalability','reliability'], penalty:{real_time:-2,simple_crud:-1}},
+      'Rule-Based Architecture':   {zh:'规则系统架构', tags:['complex_business','security'], penalty:{simple_crud:-2,resource_constrained:-2,high_concurrency:-1}},
     };
 
     function buildTopology(matrixRows, recommendedStyle) {
@@ -416,29 +420,31 @@
     function renderRefactoring(data) {
       const div = $('refactor-section');
       const ref = data?.final_report?.refactoring_advice;
-      if (!ref || Object.keys(ref).length === 0) { div.innerHTML = ''; return; }
-      if (!ref.refactoring_needed) { div.innerHTML = '<span class="cache-badge hit">✓ 当前架构无明显重构需求</span>'; return; }
+      // 如果 refactoring 数据是通过后台轮询拿到的，包装格式统一
+      const r = (ref && Object.keys(ref).length > 0) ? ref : data?.refactoring_result;
+      if (!r || Object.keys(r).length === 0) { div.innerHTML = ''; return; }
+      if (!r.refactoring_needed) { div.innerHTML = '<span class="cache-badge hit">✓ 当前架构无明显重构需求</span>'; return; }
 
       let html = '<div class="refactor-card">';
-      html += '<span class="combo-badge danger">需重构</span> <strong>目标: ' + safeStr(ref.target_architecture_zh, ref.target_architecture || '-') + '</strong>';
+      html += '<span class="combo-badge danger">需重构</span> <strong>目标: ' + safeStr(r.target_architecture_zh, r.target_architecture || '-') + '</strong>';
 
-      const smells = safeArr(ref.detected_architecture_smells);
+      const smells = safeArr(r.detected_architecture_smells);
       if (smells.length) html += '<div class="combo-detail">检测坏味: ' + smells.map(s => s.name_zh).join('、') + '</div>';
 
-      const patterns = safeArr(ref.suggested_patterns);
+      const patterns = safeArr(r.suggested_patterns);
       if (patterns.length) html += '<div class="combo-detail">建议模式: ' + patterns.map(p => p.name_zh).join('、') + '</div>';
 
-      const steps = safeArr(ref.migration_steps);
+      const steps = safeArr(r.migration_steps);
       if (steps.length) {
         html += '<details style="margin-top:4px"><summary>迁移步骤 (' + steps.length + ' 步)</summary><ol class="step-list">';
         steps.forEach(s => { html += '<li>' + s + '</li>'; });
         html += '</ol></details>';
       }
 
-      const risks = safeArr(ref.risks);
+      const risks = safeArr(r.risks);
       if (risks.length) html += '<div class="combo-detail risk-text">风险: ' + risks.slice(0, 2).join('；') + '</div>';
 
-      const mitigations = safeArr(ref.mitigation_suggestions);
+      const mitigations = safeArr(r.mitigation_suggestions);
       if (mitigations.length) html += '<div class="combo-detail">缓解: ' + mitigations.slice(0, 2).join('；') + '</div>';
 
       html += '</div>';
@@ -761,6 +767,36 @@
         renderWorkflowTrace(data);
         renderCombo(data);
         renderRefactoring(data);
+        // 如果重构后台执行中，轮询等待结果
+        if (data?.refactoring_status === 'pending' && data?.refactoring_key) {
+          const rfKey = data.refactoring_key;
+          const rfDiv = $('refactor-section');
+          rfDiv.innerHTML = '<span class="cache-badge miss">重构分析中...</span>';
+          let rfAttempts = 0;
+          const rfPoll = setInterval(async () => {
+            rfAttempts++;
+            try {
+              const r = await fetch(GATEWAY + '/api/v1/refactoring?key=' + rfKey);
+              const j = await r.json();
+              if (j.status === 'ready') {
+                clearInterval(rfPoll);
+                console.log('[refactoring] got data, keys:', Object.keys(j.data || {}));
+                console.log('[refactoring] needed:', j.data?.refactoring_needed);
+                try {
+                  renderRefactoring({ refactoring_result: j.data });
+                } catch(renderErr) {
+                  console.error('[refactoring] render error:', renderErr);
+                  rfDiv.innerHTML = '<span class="cache-badge hit">✓ 重构分析完成（渲染异常，见控制台）</span>';
+                }
+              } else if (j.status === 'failed' || rfAttempts > 30) {
+                clearInterval(rfPoll);
+                if (rfAttempts > 30) rfDiv.innerHTML = '';
+              }
+            } catch(e) {
+              console.error('[refactoring] poll error:', e);
+            }
+          }, 1000);
+        }
         renderAdrStats();
 
         $('cache-status').innerHTML = data?.cache_hit

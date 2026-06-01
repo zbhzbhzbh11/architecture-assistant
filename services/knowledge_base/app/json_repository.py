@@ -33,7 +33,7 @@ FEEDBACK_PATH = DATA_DIR / "feedback_log.json"
 WEIGHTS_PATH = DATA_DIR / "learned_weights.json"
 
 # ═══════════════════════════════════════════════════════════════
-# 中文关键词词典 — 从需求文本中提取 10 维特征
+# 中文关键词词典 — 从需求文本中提取 12 维特征
 # 与 requirements_agent 的 lexicon 保持一致
 # ═══════════════════════════════════════════════════════════════
 LEXICON_PATH = DATA_DIR / "feature_lexicon.json"

@@ -47,7 +47,7 @@ class ArchitectureWorkflowState(TypedDict, total=False):
     requirement: str
 
     # ── extract_node 产出 ──
-    # features: 10 维 bool — {"high_concurrency": True, "real_time": True, ...}
+    # features: 12 维 bool — {"high_concurrency": True, "real_time": True, ...}
     # feature_hits: 命中的关键词 — {"high_concurrency": ["万人","高并发"], ...}
     # llm_disputed: LLM 质疑的特征 — {"real_time": true} 表示 LLM 认为不应激活
     extracted_features: Dict[str, bool]

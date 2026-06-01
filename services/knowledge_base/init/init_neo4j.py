@@ -63,6 +63,18 @@ PENALTY_MAP = {
     "Client-Server": {
         "high_concurrency": -4, "scalability": -3, "team_size_large": -4,
     },
+    "Batch-Sequential": {
+        "real_time": -3, "high_concurrency": -2,
+    },
+    "Object-Oriented Architecture": {
+        "simple_crud": -2, "resource_constrained": -1,
+    },
+    "Repository Architecture": {
+        "real_time": -2, "simple_crud": -1,
+    },
+    "Rule-Based Architecture": {
+        "simple_crud": -2, "resource_constrained": -2, "high_concurrency": -1,
+    },
 }
 
 # ── 6 条特定规则 (ScoringRule 节点) — 替代硬编码 if-then ──
@@ -83,16 +95,20 @@ SCORING_RULES = [
 
 # ── 互补关系 — 补全到 10 种风格 ──
 COMPLEMENTS_MAP = {
-    "CQRS": ["Event-Driven Architecture"],
-    "Event-Driven Architecture": ["CQRS", "Microservices", "Pipeline-Filter"],
-    "Microservices": ["Event-Driven Architecture", "Hexagonal Architecture", "SOA"],
-    "Hexagonal Architecture": ["Microservices", "Layered Architecture"],
+    "CQRS": ["Event-Driven Architecture", "Repository Architecture"],
+    "Event-Driven Architecture": ["CQRS", "Microservices", "Pipeline-Filter", "Rule-Based Architecture"],
+    "Microservices": ["Event-Driven Architecture", "Hexagonal Architecture", "SOA", "Object-Oriented Architecture", "Rule-Based Architecture"],
+    "Hexagonal Architecture": ["Microservices", "Layered Architecture", "Object-Oriented Architecture"],
     "Layered Architecture": ["Hexagonal Architecture", "Client-Server"],
-    "Pipeline-Filter": ["Event-Driven Architecture"],
+    "Pipeline-Filter": ["Event-Driven Architecture", "Batch-Sequential"],
     "SOA": ["Microservices"],
     "Serverless": ["Event-Driven Architecture"],
     "Space-Based": ["CQRS"],
     "Client-Server": ["Layered Architecture"],
+    "Batch-Sequential": ["Pipeline-Filter"],
+    "Object-Oriented Architecture": ["Hexagonal Architecture", "Microservices"],
+    "Repository Architecture": ["CQRS", "Pipeline-Filter"],
+    "Rule-Based Architecture": ["Microservices", "Event-Driven Architecture"],
 }
 
 # ── 风险 + 建议 (Risk 节点) ──
@@ -147,6 +163,26 @@ RISK_DATA = {
         ("弹性扩展能力有限不适合极端并发场景", "使用CDN卸载静态资源请求减轻服务器压力"),
         ("客户端升级维护成本高", "建立客户端自动更新机制降低运维成本"),
     ],
+    "Batch-Sequential": [
+        ("延迟高不适合实时场景", "将批处理与实时管道结合形成Lambda架构"),
+        ("中间数据存储占用大，磁盘IO可能成为瓶颈", "使用列式存储格式减少IO开销"),
+        ("某步骤失败可能导致全量重跑耗时长", "建立步骤级断点续传和增量处理机制"),
+    ],
+    "Object-Oriented Architecture": [
+        ("设计复杂度高，继承层次过深难以维护", "遵循组合优于继承原则，控制继承深度不超过3层"),
+        ("与关系数据库阻抗失配增加ORM开销", "核心领域采用富领域模型，辅助查询可走简单映射"),
+        ("重量级设计不适合简单CRUD场景", "评估复杂度后选择是否引入完整OO设计"),
+    ],
+    "Repository Architecture": [
+        ("中心存储成为单点瓶颈影响全局性能", "对中心存储做读写分离和水平分片"),
+        ("分布式环境ACID难以保持", "根据业务场景进行BASE柔性事务权衡"),
+        ("数据模型演进时需协调所有接入方", "建立Schema版本管理并为各接入方预留适配窗口"),
+    ],
+    "Rule-Based Architecture": [
+        ("规则冲突检测复杂易导致非预期结果", "建立规则优先级和冲突消解策略"),
+        ("推理引擎性能低不适合高并发场景", "将高频规则预编译为决策树降低推理开销"),
+        ("规则数量爆炸后维护困难", "引入规则分类和版本管理限制单次推理的规则集大小"),
+    ],
 }
 
 # ── 种子反馈 ──
@@ -162,6 +198,10 @@ SEED_FEEDBACK = [
     ("实时性要求高的物联网设备监控平台", "Event-Driven Architecture"),
     ("复杂业务逻辑的企业ERP系统，含审批流和工作流引擎", "Layered Architecture"),
     ("复杂业务逻辑的保险理赔核心系统", "Layered Architecture"),
+    ("批量处理数据的银行日终结算和报表生成系统", "Batch-Sequential"),
+    ("采用领域驱动设计的复杂业务电商核心域模型", "Object-Oriented Architecture"),
+    ("整合多业务系统数据的企业数据中台和大数据分析平台", "Repository Architecture"),
+    ("基于规则库动态判定的保险核保和风控决策引擎", "Rule-Based Architecture"),
 ]
 
 
@@ -257,6 +297,15 @@ def init_graph():
                 """, {"feat": feat_name, "style": style_name, "weight": weight})
                 penalty_count += 1
         print(f"  Created {penalty_count} HAS_PENALTY relationships")
+
+        # ── 3b. 同时将 penalty_tags 存为节点属性 (JSON 字符串, 供 get_styles() 读取) ──
+        for style_name, penalties in PENALTY_MAP.items():
+            import json as _json
+            penalty_json = _json.dumps(penalties, ensure_ascii=False)
+            session.run("""
+                MATCH (s:ArchitectureStyle {name: $name})
+                SET s.penalty_tags = $penalty
+            """, {"name": style_name, "penalty": penalty_json})
 
         # ── 4. ScoringRule 节点 (替代硬编码 if-then) ──
         for rule in SCORING_RULES:

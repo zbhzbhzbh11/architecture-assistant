@@ -107,6 +107,15 @@ def score_style(style: Dict[str, Any], features: Dict[str, bool],
     if style["name"] == "Microservices" and features.get("high_concurrency") and features.get("strict_consistency"):
         score += 1
         hit_reasons.append("特定规则: 高并发+强一致性倾向微服务架构")
+    if style["name"] == "Repository Architecture" and features.get("data_intensive") and features.get("scalability"):
+        score += 1
+        hit_reasons.append("特定规则: 数据密集型+可扩展倾向仓库架构")
+    if style["name"] == "Rule-Based Architecture" and features.get("complex_business"):
+        score += 1
+        hit_reasons.append("特定规则: 复杂业务逻辑倾向规则系统架构")
+    if style["name"] == "Rule-Based Architecture" and features.get("security"):
+        score += 1
+        hit_reasons.append("特定规则: 安全/风控场景倾向规则系统架构")
 
     # 4. 非对称惩罚 — 特定特征对某些风格是反向信号
     penalty_tags = style.get("penalty_tags", {})
@@ -142,20 +151,32 @@ def select_top3(scored: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     mainstream_ranked = [by_name[name] for name in MAINSTREAM_STYLES if name in by_name]
     non_mainstream = [item for item in scored if item["style"] not in MAINSTREAM_STYLES]
 
-    if all(item["score"] <= 0 for item in mainstream_ranked):
-        return mainstream_ranked[:3]
-
+    # 策略: 正分优先 (主流+非主流混合按分排), 零/负分时用主流兜底
     top3: List[Dict[str, Any]] = []
-    for item in mainstream_ranked:
-        if item["score"] > 0 and len(top3) < 3:
-            top3.append(item)
-    for item in sorted(scored, key=lambda x: x["score"], reverse=True):
-        if item["score"] > 0 and item["style"] not in {x["style"] for x in top3} and len(top3) < 3:
-            top3.append(item)
+
+    # 1. 先收所有正分风格 (含主流和非主流), 按分降序
+    positive = sorted(
+        [item for item in scored if item["score"] > 0],
+        key=lambda x: x["score"], reverse=True
+    )
+    for item in positive:
+        if len(top3) >= 3:
+            break
+        top3.append(item)
+
+    # 2. 正分不足 3 个时, 用最高分非负风格补齐 (至少保证 1 个主流)
     if len(top3) < 3:
-        for item in sorted(non_mainstream, key=lambda x: x["score"], reverse=True):
-            if item["score"] > 0 and item["style"] not in {x["style"] for x in top3} and len(top3) < 3:
-                top3.append(item)
+        remaining = sorted(
+            [item for item in scored if item["style"] not in {x["style"] for x in top3}
+             and item["score"] >= 0],
+            key=lambda x: (x["score"],
+                           len([r for r in x.get("reasons", []) if "特征匹配" in r])),
+            reverse=True
+        )
+        for item in remaining:
+            if len(top3) >= 3:
+                break
+            top3.append(item)
     # 不足 3 个时用最高分候补补齐 (跳过负分, 同分按标签匹配数降序)
     if len(top3) < 3:
         remaining = sorted(

@@ -308,7 +308,7 @@ class GraphRepository:
             rt = row.get("rating")
             is_confirmed = row.get("is_confirmed")
             if rt is not None and isinstance(rt, (int, float)) and 1 <= rt <= 5:
-                RATING_MAP = {5: 1.0, 4: 0.5, 3: 0.0, 2: -0.5, 1: -1.0}
+                RATING_MAP = {5: 1.0, 4: 0.5, 3: 0.0, 2: -1.0, 1: -2.0}
                 multiplier = RATING_MAP.get(int(rt), 0.0)
             else:
                 multiplier = 1.0 if is_confirmed else -0.5
@@ -413,13 +413,6 @@ class GraphRepository:
                 multiplier = 1.0 if is_confirmed else -0.5
             weights.setdefault(feat, {}).setdefault(style, 0.0)
             weights[feat][style] += decay * multiplier
-        # 合并当前反馈的 LLM 特征 (尚未写入 Neo4j)
-        if current_features:
-            active = [k for k, v in current_features.items() if v]
-            target_style = None  # 由调用方上下文提供
-            for feat in active:
-                weights.setdefault(feat, {}).setdefault(target_style or "", 0.0)
-                weights[feat][target_style or ""] += 1.0
         return weights
 
     @staticmethod

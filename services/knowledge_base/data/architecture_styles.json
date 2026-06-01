@@ -367,6 +367,178 @@
         "scalability": -3,
         "team_size_large": -4
       }
+    },
+    {
+      "name": "Batch-Sequential",
+      "name_zh": "批处理架构",
+      "tags": [
+        "data_intensive",
+        "resource_constrained"
+      ],
+      "best_for": [
+        "batch processing",
+        "offline data jobs"
+      ],
+      "best_for_zh": [
+        "日终结算与报表",
+        "离线 ETL 批作业",
+        "日志归档与清洗"
+      ],
+      "pros": [
+        "loose coupling between steps",
+        "retry-on-failure per step",
+        "simple to implement"
+      ],
+      "pros_zh": [
+        "步骤间通过文件/数据库松耦合",
+        "失败可单步重跑，容错性好",
+        "实现简单，每步可独立优化"
+      ],
+      "cons": [
+        "high latency",
+        "unsuitable for real-time",
+        "intermediate storage overhead"
+      ],
+      "cons_zh": [
+        "延迟高（等整批跑完）",
+        "不适合实时/在线场景",
+        "中间数据存储占用大"
+      ],
+      "topology_mermaid": "graph LR\nA[数据源] --> B[步骤1: 抽取]\nB --> C[(中间存储)]\nC --> D[步骤2: 转换]\nD --> E[(中间存储)]\nE --> F[步骤3: 加载]\nF --> G[(目标数据仓库)]",
+      "penalty_tags": {
+        "real_time": -3,
+        "high_concurrency": -2
+      }
+    },
+    {
+      "name": "Object-Oriented Architecture",
+      "name_zh": "面向对象架构",
+      "tags": [
+        "complex_business",
+        "team_size_large",
+        "scalability"
+      ],
+      "best_for": [
+        "domain-driven design",
+        "complex business modeling"
+      ],
+      "best_for_zh": [
+        "领域驱动设计（DDD）",
+        "复杂业务领域建模",
+        "多人协作大型项目"
+      ],
+      "pros": [
+        "encapsulation hides details",
+        "inheritance enables reuse",
+        "polymorphism for extensibility"
+      ],
+      "pros_zh": [
+        "封装隐藏实现细节",
+        "继承支持代码复用",
+        "多态灵活扩展"
+      ],
+      "cons": [
+        "design complexity high",
+        "deep inheritance hard to maintain",
+        "impedance with relational DB"
+      ],
+      "cons_zh": [
+        "设计复杂度高",
+        "继承层次过深难以维护",
+        "与关系数据库存在阻抗失配"
+      ],
+      "topology_mermaid": "graph TB\nA[领域模型层] --> B[应用服务层]\nB --> C[基础设施层]\nC --> D[(数据库)]\nA -.-> E[领域事件]\nE -.-> F[其他聚合根]",
+      "penalty_tags": {
+        "simple_crud": -2,
+        "resource_constrained": -1
+      }
+    },
+    {
+      "name": "Repository Architecture",
+      "name_zh": "仓库架构（数据中台）",
+      "tags": [
+        "data_intensive",
+        "scalability",
+        "reliability"
+      ],
+      "best_for": [
+        "data platform",
+        "data warehouse",
+        "BI analytics"
+      ],
+      "best_for_zh": [
+        "企业数据中台",
+        "BI 分析平台",
+        "多系统数据集成"
+      ],
+      "pros": [
+        "single source of truth",
+        "independent analysis components",
+        "new components easy to add"
+      ],
+      "pros_zh": [
+        "数据集中管理（单一真相源）",
+        "独立分析组件并行运行",
+        "新数据组件易接入"
+      ],
+      "cons": [
+        "central store is bottleneck",
+        "ACID hard in distributed env",
+        "data model evolution hard"
+      ],
+      "cons_zh": [
+        "中心存储成为单点瓶颈",
+        "分布式环境 ACID 难以保持",
+        "数据模型演进困难"
+      ],
+      "topology_mermaid": "graph TB\nA[数据源A] --> E[(中央数据仓库)]\nB[数据源B] --> E\nC[数据源C] --> E\nE --> F[BI 分析引擎]\nE --> G[报表服务]\nE --> H[数据挖掘]",
+      "penalty_tags": {
+        "real_time": -2,
+        "simple_crud": -1
+      }
+    },
+    {
+      "name": "Rule-Based Architecture",
+      "name_zh": "规则系统架构",
+      "tags": [
+        "complex_business",
+        "security"
+      ],
+      "best_for": [
+        "business rule engine",
+        "approval workflow"
+      ],
+      "best_for_zh": [
+        "风控规则引擎",
+        "审批工作流系统",
+        "动态定价与核保"
+      ],
+      "pros": [
+        "rules separated from code",
+        "non-programmers can maintain",
+        "hot-reload business rules"
+      ],
+      "pros_zh": [
+        "业务规则与代码分离（热更新）",
+        "非程序员可维护规则",
+        "规则变更无需重新部署"
+      ],
+      "cons": [
+        "rule conflict detection hard",
+        "inference performance low",
+        "rule explosion hard to manage"
+      ],
+      "cons_zh": [
+        "规则冲突检测复杂",
+        "推理性能较低",
+        "规则数量爆炸后难以管理"
+      ],
+      "topology_mermaid": "graph TB\nA[规则管理界面] --> B[(规则库)]\nC[业务数据] --> D[规则推理引擎]\nB --> D\nD --> E[决策输出]\nE --> F[业务流程]",
+      "penalty_tags": {
+        "simple_crud": -2,
+        "resource_constrained": -2,
+        "high_concurrency": -1
+      }
     }
   ]
 }

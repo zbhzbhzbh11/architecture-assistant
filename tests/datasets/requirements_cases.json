@@ -18,5 +18,9 @@
   {"id": 17, "requirement": "客服系统接入多渠道消息，要求弹性扩容和可靠投递。", "expected_style": "Event-Driven Architecture", "expected_tags": ["scalability", "reliability", "real_time"]},
   {"id": 18, "requirement": "科研数据处理系统，批处理和流处理并存。", "expected_style": "Pipeline-Filter", "expected_tags": ["data_intensive"]},
   {"id": 19, "requirement": "校园管理平台，本地部署，功能模块较稳定。", "expected_style": "Client-Server", "expected_tags": ["deployment_constraint"]},
-  {"id": 20, "requirement": "跨境支付网关，要求多服务隔离、审计和高可用。", "expected_style": "Microservices", "expected_tags": ["security", "reliability", "scalability"]}
+  {"id": 20, "requirement": "跨境支付网关，要求多服务隔离、审计和高可用。", "expected_style": "Microservices", "expected_tags": ["security", "reliability", "scalability"]},
+  {"id": 21, "requirement": "银行日终结算系统，批量处理当天交易生成对账报表，不需要实时。", "expected_style": "Batch-Sequential", "expected_tags": ["data_intensive", "resource_constrained"]},
+  {"id": 22, "requirement": "保险核保风控引擎，根据规则库自动判定风险等级，业务人员可调整规则。", "expected_style": "Rule-Based Architecture", "expected_tags": ["complex_business", "security"]},
+  {"id": 23, "requirement": "企业数据中台，整合多个业务系统数据构建统一数据仓库支持BI分析。", "expected_style": "Repository Architecture", "expected_tags": ["data_intensive", "scalability"]},
+  {"id": 24, "requirement": "大型电商平台的订单领域模型，采用DDD进行复杂业务建模，多团队协作。", "expected_style": "Object-Oriented Architecture", "expected_tags": ["complex_business", "team_size_large"]}
 ]

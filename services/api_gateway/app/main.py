@@ -3,6 +3,7 @@ import os
 import sys
 import time
 import logging
+import asyncio
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -138,13 +139,36 @@ async def _langgraph_orchestrate(payload: RecommendRequest) -> Dict[str, Any]:
         "trace": [],
     }
     result = await _langgraph_app.ainvoke(initial_state)
+    # 用评估 Agent 重打分后的 comparison_matrix 替换原始 candidates
+    # (含 LLM 投票加分，保持与前端对比矩阵一致)
+    fr = result.get("final_report", {})
+    eval_candidates = fr.get("comparison_matrix", [])
+    if eval_candidates:
+        # 转换 comparison_matrix 行 → candidates 格式
+        merged_candidates = []
+        for row in eval_candidates:
+            merged_candidates.append({
+                "style": row["style"],
+                "style_zh": row.get("style_zh", row["style"]),
+                "score": row["score"],
+                "reasons": row.get("key_reasons_raw", row.get("key_reasons", [])),
+                "pros": row.get("pros", []),
+                "pros_zh": row.get("pros_zh", []),
+                "cons": row.get("cons", []),
+                "cons_zh": row.get("cons_zh", []),
+                "topology_mermaid": row.get("topology_mermaid", ""),
+                "learning_bonus": row.get("learning_bonus", 0),
+                "learned_detail": row.get("learned_detail", []),
+            })
+    else:
+        merged_candidates = result.get("candidates", [])
     return {
         "extracted_features": result.get("extracted_features", {}),
         "feature_hits": result.get("feature_hits", {}),
         "llm_disputed": result.get("llm_disputed", {}),
         "arch_inclination": result.get("arch_inclination", {}),
-        "candidates": result.get("candidates", []),
-        "final_report": result.get("final_report", {}),
+        "candidates": merged_candidates,
+        "final_report": fr,
         "workflow_engine": "langgraph",
         "workflow_trace": result.get("trace", []),
     }
@@ -153,6 +177,68 @@ async def _langgraph_orchestrate(payload: RecommendRequest) -> Dict[str, Any]:
 # ═══════════════════════════════════════════════════════════════
 # 主推荐端点 — 系统的唯一对外接口
 # ═══════════════════════════════════════════════════════════════
+
+# 重构结果后台存储 (key=cache_key, value=refactoring_result)
+_refactoring_store: Dict[str, Any] = {}
+
+
+async def _fetch_refactoring_background(
+    cache_key: str,
+    requirement: str,
+    features: Dict[str, Any],
+    candidates: list,
+    recommended_style: str,
+    recommended_combination: Dict[str, Any],
+) -> None:
+    """后台任务: 调用 refactoring-agent，结果写入 _refactoring_store。
+    前端通过 GET /api/v1/refactoring?key=xxx 轮询获取。"""
+    try:
+        async with httpx.AsyncClient(timeout=15.0, trust_env=False) as ref_client:
+            ref_resp = await ref_client.post(
+                f"{REFACTORING_AGENT_URL}/refactor",
+                json={
+                    "requirement": requirement,
+                    "features": features,
+                    "candidates": candidates,
+                    "recommended_style": recommended_style,
+                    "recommended_combination": recommended_combination,
+                },
+            )
+            if ref_resp.status_code == 200:
+                data = ref_resp.json()
+                _refactoring_store[cache_key] = {
+                    "status": "ready",
+                    "data": data,
+                }
+                logger.info(
+                    f"[background] Refactoring ready: "
+                    f"needed={data.get('refactoring_needed')}, "
+                    f"smells={len(data.get('detected_architecture_smells', []))}, "
+                    f"patterns={len(data.get('suggested_patterns', []))}"
+                )
+            else:
+                _refactoring_store[cache_key] = {"status": "failed", "data": {}}
+    except Exception as e:
+        _refactoring_store[cache_key] = {"status": "failed", "data": {}}
+        logger.debug(f"[background] Refactoring skipped: {e}")
+
+
+@app.get("/api/v1/refactoring")
+async def get_refactoring(key: str = "") -> Dict[str, Any]:
+    """轮询端点: 前端定时调用以获取后台完成的重构结果。
+
+    返回值:
+      {status: "pending"}  — 重构还在后台执行，前端继续轮询
+      {status: "ready", data: {...}} — 重构已完成
+      {status: "not_found"} — 无效 key
+    """
+    if not key:
+        return {"status": "not_found"}
+    result = _refactoring_store.pop(key, None)
+    if result is None:
+        return {"status": "pending"}
+    return result
+
 
 @app.post("/api/v1/recommend")
 async def recommend(payload: RecommendRequest) -> Dict[str, Any]:
@@ -193,29 +279,20 @@ async def recommend(payload: RecommendRequest) -> Dict[str, Any]:
 
     result["cache_hit"] = False
 
-    # 阶段3: 重构建议 — 非阻塞装饰性调用
-    # 独立 HTTP 连接 (不重用编排阶段的 httpx 客户端)
-    # 8s 超时控制 + try/except 确保不阻塞主链路
-    refactoring_advice = {}
-    try:
-        async with httpx.AsyncClient(timeout=25.0, trust_env=False) as ref_client:
-            ref_resp = await ref_client.post(
-                f"{REFACTORING_AGENT_URL}/refactor",
-                json={
-                    "requirement": payload.requirement,
-                    "features": result.get("extracted_features", {}),
-                    "candidates": result.get("candidates", []),
-                    "recommended_style": result["final_report"].get("recommended_style", ""),
-                    "recommended_combination": result["final_report"].get("recommended_combination", {}),
-                },
-            )
-            if ref_resp.status_code == 200:
-                refactoring_advice = ref_resp.json()
-                logger.info(f"Refactoring advice: needed={refactoring_advice.get('refactoring_needed')}")
-    except Exception as e:
-        logger.warning(f"Refactoring agent unavailable (non-fatal): {e}")
-
-    result["final_report"]["refactoring_advice"] = refactoring_advice
+    # 阶段3: 重构建议 — 后台任务 + 前端轮询
+    # 主响应立即返回 (refactoring_advice 为空 + status=pending)
+    # 前端通过 GET /api/v1/refactoring?key=xxx 轮询获取结果
+    asyncio.create_task(_fetch_refactoring_background(
+        key,
+        payload.requirement,
+        result.get("extracted_features", {}),
+        result.get("candidates", []),
+        result["final_report"].get("recommended_style", ""),
+        result["final_report"].get("recommended_combination", {}),
+    ))
+    result["final_report"]["refactoring_advice"] = {}
+    result["refactoring_key"] = key
+    result["refactoring_status"] = "pending"
 
     # 阶段4: 写入缓存
     cache_set(key, result)

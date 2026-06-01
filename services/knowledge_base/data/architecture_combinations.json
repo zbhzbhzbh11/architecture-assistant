@@ -59,6 +59,42 @@
       "synergy_zh": "CQRS 分离命令与查询模型；事件溯源将所有状态变更记录为事件，实现完整审计追踪和时间旅行查询。",
       "complexity_penalty": 3,
       "topology_mermaid": "graph LR\nA[客户端] --> B[命令API]\nA --> C[查询API]\nB --> D[(事件存储)]\nD --> E[事件处理器]\nE --> F[(读模型)]\nC --> F\nD -.重放.-> E"
+    },
+    {
+      "name": "Batch-Sequential + Pipeline-Filter",
+      "name_zh": "批处理 + 管道-过滤器",
+      "styles": ["Batch-Sequential", "Pipeline-Filter"],
+      "tags": ["data_intensive", "real_time", "resource_constrained"],
+      "best_for": ["hybrid batch-stream processing", "data platform"],
+      "best_for_zh": ["批流混合数据处理", "企业数据平台"],
+      "synergy": "Batch-Sequential handles offline ETL and scheduled reports; Pipeline-Filter processes real-time streaming data. Together they cover the full data processing spectrum.",
+      "synergy_zh": "批处理负责离线 ETL 和定时报表；管道-过滤器处理实时流式数据，二者覆盖数据处理全频谱。",
+      "complexity_penalty": 2,
+      "topology_mermaid": "graph LR\nA[数据源] --> B[批处理管道]\nB --> C[(数据仓库)]\nA --> D[实时管道]\nD --> E[(实时存储)]\nC --> F[BI 报表]\nE --> G[实时监控]"
+    },
+    {
+      "name": "Object-Oriented + Hexagonal Architecture",
+      "name_zh": "面向对象 + 六边形架构",
+      "styles": ["Object-Oriented Architecture", "Hexagonal Architecture"],
+      "tags": ["complex_business", "team_size_large", "reliability"],
+      "best_for": ["domain-driven design", "high-testability systems"],
+      "best_for_zh": ["领域驱动设计项目", "高可测试性系统"],
+      "synergy": "Object-Oriented models the domain core with rich behavior; Hexagonal wraps it with clean port-adapter boundaries, isolating infrastructure concerns.",
+      "synergy_zh": "面向对象建模领域核心的丰富行为；六边形架构用端口-适配器隔离基础设施，实现 DDD 最佳实践。",
+      "complexity_penalty": 2,
+      "topology_mermaid": "graph TB\nA[Web适配器] --> B[领域端口]\nB --> C[OO领域模型]\nC --> D[持久化端口]\nD --> E[(数据库)]\nF[消息适配器] --> B\nC -.领域事件.-> G[事件总线]"
+    },
+    {
+      "name": "Rule-Based + Microservices",
+      "name_zh": "规则系统 + 微服务",
+      "styles": ["Rule-Based Architecture", "Microservices"],
+      "tags": ["complex_business", "scalability", "team_size_large", "security"],
+      "best_for": ["policy-driven platforms", "compliance-heavy systems"],
+      "best_for_zh": ["策略驱动平台", "强合规系统"],
+      "synergy": "Rule-Based extracts business rules into a standalone service with hot-reload; Microservices provides independent deployment and scaling for rule execution.",
+      "synergy_zh": "规则系统将业务规则抽取为独立服务并支持热更新；微服务提供独立部署和弹性伸缩能力。",
+      "complexity_penalty": 2,
+      "topology_mermaid": "graph LR\nA[API网关] --> B[业务服务]\nA --> C[规则引擎服务]\nB --> C\nC --> D[(规则库)]\nC -.规则更新.-> D\nB --> E[(业务DB)]"
     }
   ]
 }

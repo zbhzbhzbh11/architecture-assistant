@@ -3,7 +3,7 @@
 匹配流程由 3 子节点 Subgraph 驱动:
   rule_score → top3_select → combo_rank
 
-规则引擎从 Neo4j 读取风格/权重数据, 执行 5 层确定性评分.
+规则引擎从 Neo4j 读取风格/权重数据, 执行四层确定性评分.
 """
 
 import os
