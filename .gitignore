@@ -14,5 +14,7 @@ build/
 adr_records.json
 docs/resume_learning/
 docs/面试复习/
+docs/defense/
+docs/image/
 scripts/build_interview_book.py
 scripts/build_interview_pdf.py

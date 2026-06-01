@@ -90,14 +90,19 @@ class RecommendRequest(BaseModel):
 
 
 class RecommendResponse(BaseModel):
-    """推荐响应体 — 从原始编排结果封装, 所有字段向后兼容."""
+    """推荐响应体."""
     extracted_features: Dict[str, Any]
     feature_hits: Dict[str, Any]
+    llm_disputed: Dict[str, bool] = {}
+    arch_inclination: Dict[str, Any] = {}
     candidates: list[Dict[str, Any]]
+    combination_candidates: list[Dict[str, Any]] = []
     final_report: Dict[str, Any]
     workflow_engine: str = "manual"
     workflow_trace: List[Dict[str, Any]] = []
     cache_hit: bool = False
+    refactoring_key: str = ""
+    refactoring_status: str = ""
 
 
 # ═══════════════════════════════════════════════════════════════
